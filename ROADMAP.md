@@ -1,0 +1,184 @@
+# Stremo — Présentation, Bilan & Plan de Développement Futur 🚀
+
+Stremo est une plateforme de streaming moderne, ultra-rapide et conviviale, conçue pour réunir le meilleur de **Nuvio** et **Stremio** dans une expérience tout-en-un fluide, sécurisée et adaptée à tous les membres de la famille (du plus jeune enfant aux grands-parents).
+
+---
+
+## 📖 1. Présentation Générale du Projet
+
+### 🎯 La Vision
+La plupart des applications de streaming communautaires existantes souffrent de défauts majeurs :
+- **Stremio** est puissant grâce à son écosystème d'add-ons, mais son interface reste austère, complexe à paramétrer pour des non-initiés, dépourvue de profils étanches avec contrôle parental sérieux, et n'intègre pas les fonctions ergonomiques modernes (saut d'intro/outro, filtrage instantané debrid, casting interactif).
+- **Nuvio** propose une esthétique soignée mais peut manquer de modularité et d'une prise en charge native des protocoles multi-lecteurs et multi-formats.
+
+**Stremo combine les deux forces :**
+1. **La puissance technique de Stremio** : compatible avec 100% des add-ons Stremio (v3), proxification parallèle rapide (`Promise.allSettled`), masquage des jetons privés Debrid/AIOStreams, support des flux 4K HDR, Dolby Vision et Dolby Atmos.
+2. **L'élégance et le confort de Nuvio** : design immersif sombre (palette `#07090e`), bannières cinéma en haute définition, fiches détaillées interactives, carrousels réactifs, lecteur tout équipé avec saut de générique.
+3. **Une orientation familiale sans compromis** : isolation complète multi-profils (historique, reprise, favoris), mode Enfant étanche filtrant automatiquement les genres violents, et protection des profils adultes par code PIN.
+
+---
+
+## ✅ 2. Ce qui a été fait (Bilan des Réalisations)
+
+### 🎨 A. Interface & Expérience Utilisateur (UI/UX)
+- **Accueil Immersif (HeroBanner)** : carrousel rotatif d'arrière-plans haute fidélité avec synopsis, genres, notes IMDb authentiques et bouton « Lecture rapide » en un clic.
+- **Rails de Contenu & Affiches Nuvio-style (CatalogRow)** :
+  - Défilement fluide horizontal avec boutons de navigation et support complet clavier / télécommande (D-Pad).
+  - Bouton de lecture centré animé au survol avec effet de flou arrière-plan.
+  - Badges de notes IMDb dorés et indicateur clair du temps restant (« Reste 24m » ou « S1E3 • Reste 18m »).
+  - Barre de reprise de lecture profilée sous les affiches.
+- **Vue d'Exploration Multi-Catalogues (DiscoverView)** :
+  - Sélecteur de type Films / Séries avec compteurs réactifs.
+  - Carrousel horizontal des catalogues configurés (TMDB Popular, Netflix, Disney+, etc.).
+  - Filtres de genres cinématographiques en pilules interactives.
+  - Filtre local instantané en temps réel sans latence réseau.
+  - Tri multi-critères : Recommandé, Note IMDb décroissante, Année décroissante, Alphabétique (A-Z).
+  - Double mode d'affichage : Grille aérée (5 colonnes) et Liste détaillée.
+- **Vue de Recherche Intelligente Dédiée (SearchView)** :
+  - Barre de recherche principale avec auto-focus et raccourci global `/` ou `Ctrl+K`.
+  - Recherche simultanée en parallèle sur films et séries avec debounce optimisé à 180 ms.
+  - Historique des recherches mémorisé localement avec relance en un clic et nettoyage individuel/global.
+  - Suggestions de recherche en un clic (Tendances 2026, Batman, Marvel, Science-Fiction, Action, Animation, Netflix).
+  - Filtres dynamiques avec compteurs en direct (`Tous`, `Films`, `Séries`).
+
+### 🎬 B. Fiche Média Détaillée & Gestion des Flux (MediaModal)
+- **Analyse Avancée des Flux (AIOStreams / Torrentio)** :
+  - Détection automatique et badges visuels : Résolution (4K, 1080p, 720p), Fournisseur Debrid (⚡ Real-Debrid, ⚡ Torbox, ⚡ AllDebrid), Codecs (HEVC, AVC), HDR / Dolby Vision, Audio (Atmos, 5.1), taille du fichier et drapeaux de langues (VF, VOST).
+  - **Filtre instantané Debrid (`⚡ Debrid`)** : isolation en 1 clic des flux hébergés prêts pour la lecture immédiate sans mise en mémoire tampon.
+  - Filtres par résolution (`Toutes`, `4K`, `1080p`, `720p`).
+  - Classement intelligent priorisant le confort de lecture selon le lecteur choisi.
+- **Navigation Épisodes & Suivi des Épisodes Vus** :
+  - Sélecteur de saison et grille d'épisodes avec miniatures, résumés et numérotation.
+  - **Badges d'épisodes vus (`Vu ✓`)** directement affichés sur les vignettes.
+  - Bouton d'action 1-clic pour marquer ou démarquer un épisode comme vu.
+- **Distribution & Filmographie Interactive** :
+  - Galerie complète des acteurs et du réalisateur avec photos et noms de rôles.
+  - **Recherche filmographique au clic** : cliquer sur un acteur ou un réalisateur ouvre directement sa filmographie dans l'onglet de recherche.
+- **Bande-annonce Officielle** : lecteur YouTube intégré sans quitter l'application.
+
+### ⚡ C. Lecteur Vidéo Next-Gen & Binge-Watching (VideoPlayer)
+- **Saut du Générique de Fin (Outro / Credits Skip)** :
+  - Détection automatique dès l'entrée dans le générique de fin (seuil configurable : 90s, 75s, 45s, 20s avant la fin).
+  - Bandeau élégant « Générique de fin détecté • Épisode suivant » avec compte à rebours 10s et bouton de saut immédiat (`Touche N`).
+  - Bouton pour rester sur le générique si l'utilisateur souhaite regarder une scène post-crédits.
+- **Saut du Générique de Début (Passer l'intro)** :
+  - Bouton d'action rapide flottant dans les 4 premières minutes de l'épisode pour avancer de 85 secondes (`Touche S`).
+- **Menu Réglages « Génériques »** : réglage en temps réel du seuil d'outro et de l'enchaînement automatique sauvegardé dans le profil.
+- **Gestion des Sous-titres & Décalage (Sync)** :
+  - Sélection des pistes OpenSubtitles v3.
+  - Décalage à la volée (`+/-0.5s`, `+/-1.0s`, reset `0s`).
+  - Tailles de police au choix (`Normal`, `Grand`, `Maxi`) avec surbrillance noire contrastée.
+- **Contrôles et Fonctionnalités Avancées** :
+  - Vitesse de lecture (0.75x à 2.0x).
+  - Mode Picture-in-Picture (PiP) natif.
+  - Raccourcis clavier universels (Espace/K, F, M, N, S, Flèches).
+  - Lancement direct dans les lecteurs externes desktop : **VLC**, **MPV**, lecteur système (`xdg-open`).
+  - Support des Intents Android : **Just Player**, **Nova Video Player**, **MX Player**.
+
+### 🛡️ D. Multi-Profils & Sécurité Parentale
+- Mode « Gérer les profils » inspiré de Netflix avec édition du nom, de l'avatar et du PIN.
+- **Mode Enfants hermétique** : filtrage algorithmique strict bannissant tout contenu violent, horrifique ou adulte et préservant les animations et contenus familiaux.
+- **Contrôle Parental par Code PIN** : verrouillage instantané interdisant le passage d'un profil enfant à un profil adulte sans le PIN correct.
+- **Isolation totale** en base SQLite des historiques, temps de visionnage et favoris entre chaque membre du foyer.
+
+### 📦 E. Infrastructure, PWA & Add-ons
+- **Progressive Web App (PWA)** : Web App Manifest, Service Worker et installation en 1 clic sur Android, iOS, Windows et Mac.
+- **Navigation Télécommande / Clavier (D-Pad)** : focus rings indigo haute visibilité pour usage sur Smart TV et box de salon.
+- **Gestionnaire d'Add-ons Sécurisé** : masquage des jetons secrets d'API dans les URLs d'add-ons (`token masking`).
+- **Suite de tests automatisés** : 11 tests unitaires et d'intégration validant le comportement de bout en bout (`npm test`).
+
+---
+
+## 🔮 3. Plan de Développement Futur (Roadmap)
+
+Le développement futur de Stremo s'articule en 3 phases progressives et pragmatiques :
+
+```mermaid
+flowchart LR
+    A["Phase 1 : Synchronisation & Cloud"] --> B["Phase 2 : Écosystème Salon & TV"]
+    B --> C["Phase 3 : Haute Performance & P2P"]
+```
+
+### 📍 Phase 1 : Synchronisation Externe & Comptes Cloud (Court Terme)
+1. **Intégration Trakt.tv Bidirectionnelle** :
+   - Synchronisation automatique de l'historique de visionnage (scrobbling en temps réel).
+   - Récupération des listes personnelles, watchlists et historiques existants depuis Trakt.
+2. **Synchronisation Multi-Appareils Cloud / P2P** :
+   - Sauvegarde et synchronisation chiffrée des profils et favoris entre plusieurs appareils du foyer via une clé de sync légère.
+3. **Téléchargements Locaux (Mode Hors-Ligne)** :
+   - Mise en cache locale des épisodes sur smartphone ou ordinateur portable pour visionnage en voyage sans connexion Internet.
+4. **Base Communautaire de Chapitrage (AniSkip / TheTVDB Chaptering)** :
+   - Détection des génériques basée sur les timecodes exacts vérifiés par la communauté pour un saut d'intro/outro au millième de seconde près.
+
+### 📍 Phase 2 : Écosystème Salon, Android TV & Cast (Moyen Terme)
+1. **Application Dédiée Android TV / Google TV (APK Native)** :
+   - Interface d'accueil orientée 10 pieds (10-foot UI) optimisée à 100% pour la télécommande standard.
+   - Intégration dans le rail « Continuer à regarder » d'Android TV.
+2. **Support Chromecast (Google Cast) & AirPlay** :
+   - Bouton de cast directement dans le lecteur vidéo pour diffuser sur n'importe quel téléviseur du réseau local sans fil.
+3. **Multi-Comptes Debrid Simultanés** :
+   - Agrégation conjointe de plusieurs comptes Debrid (ex: Real-Debrid + Torbox + Premiumize) avec basculement automatique en cas de panne de l'un des fournisseurs.
+4. **Profils Invités & Restrictions Temporelles** :
+   - Plages horaires d'utilisation configurables pour les profils enfants (ex: arrêt automatique à 20h30).
+
+### 📍 Phase 3 : Moteur Torrent Intégré & Haute Performance (Long Terme)
+1. **Moteur Torrent WebTorrent / Libtorrent Embarqué** :
+   - Streaming peer-to-peer direct sans passer par un serveur debrid obligatoire, avec pré-chargement séquentiel des morceaux vidéo.
+2. **Transcodage Serveur à la Volée (Optionnel pour NAS)** :
+   - Transcodage matériel (NVENC / Intel QuickSync) pour lire des vidéos 4K HEVC ou profils audio non reconnus par les vieux navigateurs.
+3. **Application Desktop Packagée (Electron / Tauri)** :
+   - Fichiers exécutables autonomes `.AppImage`, `.deb`, `.exe`, `.dmg` avec intégration système native (gestion du mode veille, raccourcis médias matériels).
+
+---
+
+## 🎤 4. Plan de Présentation & Guide de Démonstration
+
+Ce plan est conçu pour présenter le projet à des proches, des utilisateurs finaux ou des contributeurs techniques.
+
+### ⏱️ Pitch en 30 Secondes (L'Elevator Pitch)
+> « Stremo est une plateforme de streaming open source moderne qui réunit toute votre médiathèque en un seul endroit. Compatible avec tous les add-ons Stremio, elle offre une interface soignée inspirée de Nuvio, une lecture 4K instantanée sans attente via Debrid, le saut intelligent des génériques d'intro et de fin, et un vrai contrôle parental multi-profils avec code PIN. C'est l'application familiale par excellence : aussi simple pour un enfant de 6 ans que pour ses grands-parents. »
+
+### 🎬 Déroulé de Démonstration Pas à Pas (10 Minutes)
+
+| Étape | Action démontrée | Effet recherché |
+| :--- | :--- | :--- |
+| **1. Accueil & Profils (1 min)** | Démarrer l'application, montrer le sélecteur de profils avec avatars colorés. Sélectionner le profil « Principal ». | Montrer l'immédiateté et la clarté visuelle type Netflix. |
+| **2. Le Billboard & Accueil (2 min)** | Faire défiler le carrousel cinéma en haut, puis les rails horizontaux. Pointer le bouton de lecture centré au survol et le temps restant (« Reste 24m »). | Souligner la fluidité et le design épuré sans publicité ni surcharge. |
+| **3. Recherche Instantanée (1 min)** | Taper `/`, entrer « Batman ». Montrer la recherche simultanée films/séries en 180 ms et les filtres de catégories. | Prouver la rapidité foudroyante face aux lenteurs de Stremio officiel. |
+| **4. Fiche Média & Filtres Debrid (2 min)** | Ouvrir un film. Montrer l'analyse des flux, le filtre `⚡ Debrid`, et cliquer sur un acteur pour ouvrir sa filmographie. | Démontrer la valeur ajoutée pour les cinéphiles et utilisateurs de Real-Debrid. |
+| **5. Le Lecteur & Saut de Générique (2 min)** | Lancer une série. Cliquer sur « Passer l'intro (+85s) ». Avancer vers la fin pour voir le bandeau d'épisode suivant apparaître dès le début du générique de fin. | **Moment fort ("Whaou")** : confort de binge-watching identique aux plateformes payantes. |
+| **6. Sécurité & Mode Enfant (2 min)** | Basculer sur le profil « Enfants » : constater la disparition de tout contenu violent. Tenter de revenir sur « Principal » : le code PIN bloque l'accès. | Rassurer les parents sur la protection familiale totale. |
+
+---
+
+## 💻 5. Commandes Utiles pour le Déploiement
+
+### Installation des Dépendances
+```bash
+npm install
+npm run install:all
+```
+
+### Lancement en Mode Développement
+```bash
+# Terminal 1 : Backend Express
+npm run dev --prefix server
+
+# Terminal 2 : Frontend Vite
+npm run dev --prefix client
+```
+
+### Lancement de la Suite de Tests
+```bash
+npm test
+```
+
+### Compilation & Déploiement Production
+```bash
+npm run build
+npm run start --prefix server
+```
+
+---
+
+*Stremo est développé avec passion pour offrir l'expérience de streaming la plus libre, rapide et élégante du web.*

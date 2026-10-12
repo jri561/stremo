@@ -1,0 +1,19 @@
+{
+  "name": "Stremo - Votre Cinéma Privé",
+  "short_name": "Stremo",
+  "description": "Stremo regroupe vos catalogues, favoris, historique familial et lecteurs vidéo en une expérience fluide.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#07090e",
+  "orientation": "any",
+  "categories": ["entertainment", "multimedia", "movies"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
