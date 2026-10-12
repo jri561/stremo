@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Sparkles, Film, Plus, Check, X, Pencil, Trash2, Lock } from 'lucide-react';
+import { User, Sparkles, Film, Plus, Check, X, Pencil, Trash2, Lock, Radio, Tv } from 'lucide-react';
 import type { Profile } from '../api';
 
 interface Props {
@@ -10,6 +10,9 @@ interface Props {
   onCreateProfile: (name: string, avatar: string, isKids: boolean, pin?: string) => Promise<void>;
   onUpdateProfile?: (id: string, updates: { name: string; avatar: string; isKids: boolean; pin?: string | null }) => Promise<void>;
   onDeleteProfile?: (id: string) => Promise<void>;
+  onOpenDeviceSync?: () => void;
+  onToggleTvMode?: () => void;
+  isTvMode?: boolean;
 }
 
 export const ProfileSelector: React.FC<Props> = ({
@@ -19,6 +22,9 @@ export const ProfileSelector: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onDeleteProfile,
+  onOpenDeviceSync,
+  onToggleTvMode,
+  isTvMode,
 }) => {
   const [isManaging, setIsManaging] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -172,17 +178,45 @@ export const ProfileSelector: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Bouton bascule Gestion des profils */}
-      <button
-        onClick={() => setIsManaging(!isManaging)}
-        className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer border ${
-          isManaging
-            ? 'bg-amber-500 hover:bg-amber-400 text-black border-amber-400 shadow-lg'
-            : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
-        }`}
-      >
-        {isManaging ? 'Terminé' : 'Gérer les profils'}
-      </button>
+      {/* Boutons d'action bas */}
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {onOpenDeviceSync && !isManaging && (
+          <button
+            onClick={onOpenDeviceSync}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer border bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border-indigo-500/30 flex items-center gap-2 shadow-sm"
+            title="Lier ce téléviseur, mobile ou PC avec un code d'appairage express"
+          >
+            <Radio className="w-4 h-4 text-indigo-400" />
+            Lier cet écran (TV / PC / Mobile)
+          </button>
+        )}
+
+        {onToggleTvMode && !isManaging && (
+          <button
+            onClick={onToggleTvMode}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer border flex items-center gap-2 shadow-sm ${
+              isTvMode
+                ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/50 shadow-indigo-500/20'
+                : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+            }`}
+            title="Basculer le Mode TV / Salon 10-pieds"
+          >
+            <Tv className="w-4 h-4 text-indigo-400" />
+            {isTvMode ? 'Mode TV (Actif)' : 'Mode TV'}
+          </button>
+        )}
+
+        <button
+          onClick={() => setIsManaging(!isManaging)}
+          className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer border ${
+            isManaging
+              ? 'bg-amber-500 hover:bg-amber-400 text-black border-amber-400 shadow-lg'
+              : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+          }`}
+        >
+          {isManaging ? 'Terminé' : 'Gérer les profils'}
+        </button>
+      </div>
 
       {/* Modal Création Profil */}
       {showCreateModal &&

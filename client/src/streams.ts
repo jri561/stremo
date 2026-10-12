@@ -190,3 +190,55 @@ export function isOutroCreditsDetected(currentTime: number, duration: number, sk
   const effectiveThreshold = Math.max(20, Math.min(skipOutroSec, duration * 0.12));
   return remaining <= effectiveThreshold && remaining > 0;
 }
+
+/**
+ * Détecte si la lecture se situe dans la plage d'introduction automatique pour une série
+ */
+export function shouldAutoSkipIntro(
+  currentTime: number,
+  duration: number,
+  autoSkipEnabled: boolean,
+  introStartSec: number = 3,
+  introWindowMaxSec: number = 20
+): boolean {
+  if (!autoSkipEnabled || duration <= 120) return false;
+  // Déclenchement au tout début de l'épisode (entre introStartSec et introWindowMaxSec)
+  return currentTime >= introStartSec && currentTime <= introWindowMaxSec;
+}
+
+/**
+ * Calcule le timecode cible après le saut d'intro (ex: +85 secondes)
+ */
+export function getIntroTargetTime(currentTime: number, duration: number, introDurationSec: number = 85): number {
+  return Math.min(Math.max(0, duration - 15), currentTime + introDurationSec);
+}
+
+/**
+ * Trouve le prochain flux alternatif en cas d'erreur de lecture (Auto-Fallback)
+ */
+export function getNextFallbackStream(
+  currentStreamUrl: string,
+  availableStreams: StreamSource[]
+): StreamSource | null {
+  if (!availableStreams || availableStreams.length <= 1) return null;
+  const validStreams = availableStreams.filter(s => !!s.url);
+  const currentIndex = validStreams.findIndex(s => s.url === currentStreamUrl);
+  if (currentIndex === -1) {
+    return validStreams[0] || null;
+  }
+  if (currentIndex + 1 < validStreams.length) {
+    return validStreams[currentIndex + 1];
+  }
+  return null;
+}
+
+/**
+ * Détecte si l'appareil est une Smart TV, Box Android TV ou récepteur salon
+ */
+export function detectTvDevice(userAgent: string): boolean {
+  if (!userAgent) return false;
+  return /Android.*TV|SmartTV|Tizen|Web0S|BRAVIA|AFTT|AFTM|AFTB|CrKey|AppleTV|HbbTV|Xbox|PlayStation|Nexus Player|SHIELD/i.test(
+    userAgent
+  );
+}
+

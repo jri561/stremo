@@ -50,47 +50,43 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Protection parentale par code PIN** : impossible de basculer d'un profil enfant vers un profil adulte sans entrer le code PIN parental.
    - **Isolation totale** de l'historique de lecture, pourcentages d'avancement et bibliothèque de favoris.
 
-6. **Lecteur Vidéo Next-Gen & Saut des Génériques (Intro & Outro)** :
-   - **Saut du générique de fin & Binge-Watching** : détection intelligente dès le début du générique de fin (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours automatique ou clic immédiat (`Touche N`).
+6. **Lecteur Vidéo Next-Gen, Auto-Fallback & Saut des Génériques** :
+   - **Auto-Fallback Transparent en Cas d'Erreur** : si un flux vidéo direct ou Debrid échoue (format non supporté, codec indisponible, lien 403), Stremo bascule automatiquement vers le prochain flux alternatif après un compte à rebours de 3 secondes avec option d'annulation ou basculement immédiat.
+   - **Sélecteur de Flux en Cours de Lecture** : bouton `Flux (N)` directement accessible dans la barre de contrôle pour permuter entre 4K, 1080p, ou différents providers Debrid sans jamais quitter ni relancer le lecteur vidéo !
+   - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio intégrée via Web Audio API (`DynamicsCompressorNode`) activable en 1 clic pour apaiser les effets sonores assourdissants et magnifier la clarté des dialogues lors des séances nocturnes.
+   - **Saut Automatique & Manuel du Générique d'Intro** : saut automatique configurable (ex: +85s) dès le début de l'épisode pour les séries, avec bouton flottant manuel (`Touche S`) et possibilité d'annuler.
+   - **Saut du Générique de Fin & Binge-Watching** : détection dès le début de l'outro (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours 10s ou raccourci (`Touche N`).
    - **Google Cast & Apple AirPlay** : diffusion directe sur vos Smart TV, Chromecast et récepteurs AirPlay via les API standard Web et Remote Playback.
    - **Téléchargement hors-ligne direct** : bouton 1-clic pour les flux Debrid et liens HTTP directs afin de visionner sans connexion.
-   - **Saut du générique d'ouverture (Passer l'intro)** : bouton flottant élégant dans les premières minutes de l'épisode pour avancer de 85 secondes en un clic (`Touche S`).
-   - **Menu Dédié « Génériques »** : réglage en direct du seuil de détection du générique de fin et activation/désactivation de l'enchaînement automatique mémorisé dans le profil.
    - **Synchronisation fine des sous-titres** : réglage en direct du décalage (`+/-0.5s`, `+/-1.0s`, `0s Reset`) pour synchroniser n'importe quel fichier SRT/VTT OpenSubtitles.
    - **Taille des sous-titres personnalisable** : `Normal`, `Grand`, `Maxi` avec surbrillance noire contrastée pour grand écran ou salon.
-   - **Vitesse de lecture adaptable** : `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x`.
-   - **Picture-in-Picture (PiP) natif** : regardez votre film ou série en travaillant ou en naviguant sur une autre fenêtre.
-   - Lecteur HTML5 / HLS intégré optimisé.
-   - Lancement direct dans les lecteurs externes desktop : **VLC**, **MPV**, lecteur système (`xdg-open`).
-   - Protocoles Intents Android : **Just Player**, **Nova Video Player**, **MX Player**, sélecteur universel Android.
+   - **Vitesse de lecture adaptable** : `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x` et mode **Picture-in-Picture (PiP)** natif.
+   - Lancement direct dans les lecteurs externes desktop (**VLC**, **MPV**, lecteur système) et Android (**Just Player**, **Nova Video Player**, **MX Player**).
 
-7. **Scrobble Trakt.tv Bidirectionnel & Suivi Automatique** :
+7. **Appairage Express TV / PC / Mobile par Code PIN & QR Code** :
+   - **Connexion TV en 5 secondes** : affichez un grand code 6 caractères et un QR code sur votre téléviseur de salon. Scannez avec votre téléphone ou entrez le code depuis votre PC pour transmettre profils, favoris et add-ons instantanément sans saisir de mot de passe à la télécommande !
+   - **Canal de Synchronisation Continue du Foyer (Family Sync Hub)** : synchronisation bidirectionnelle automatique en arrière-plan toutes les 45 secondes pour retrouver son historique de reprise sur tous les écrans du foyer sans manipulation manuelle.
+
+8. **Mode Salon TV 10-pieds Dédié** :
+   - Détection automatique sur Smart TV et boîtiers Android TV, Fire TV, Chromecast, WebOS, Tizen.
+   - Raccourci clavier / télécommande `T` ou bouton « Mode TV » dans l'en-tête pour basculer à volonté.
+   - Typographie agrandie haute lisibilité, anneaux de focus lumineux amplifiés (`scale-105`), barre d'assistance télécommande au bas de l'écran.
+
+9. **Scrobble Trakt.tv Bidirectionnel & Suivi Automatique** :
    - Association de compte Trakt.tv personnalisée par profil.
    - Envoi automatique du scrobble en temps réel (`start` à la lecture, `pause` lors des arrêts, `stop` avec marquage comme « Vu » dès 80%).
    - Proxy sécurisé côté serveur (`/api/trakt/scrobble`) pour respecter les en-têtes officiels de l'API Trakt v2.
 
-8. **Sauvegarde & Synchronisation Multi-Écrans (Export / Import 1-Clic)** :
+10. **Sauvegarde & Migration Multi-Écrans (Export / Import 1-Clic)** :
    - Sauvegarde complète de la configuration : profils, add-ons installés, bibliothèque de favoris et historique d'avancement.
    - Exportation instantanée au format JSON ou copie dans le presse-papier.
    - Restauration multi-écrans avec modes **Fusion intelligente** (ajoute sans écraser) ou **Remplacement intégral**.
-   - Idéal pour migrer ou synchroniser sa configuration entre PC de salon, smartphone, tablette et TV connectée.
 
-9. **Application PWA (Progressive Web App) & Installation en 1 Clic** :
-   - Web App Manifest complet avec icônes adaptatives et affichage `standalone`.
-   - Bouton d'installation intégré (« Installer l'app ») sur Android, iOS, Windows, Mac et Chromebook.
-   - Service Worker pour une mise en cache résiliente des ressources de base de l'application.
-
-10. **Navigation Télécommande / Clavier (D-Pad & Smart TV)** :
-   - Accessibilité complète avec les 4 flèches directionnelles et la touche Entrée.
-   - Flèches Gauche/Droite pour naviguer et faire défiler les rails de films.
-   - Flèches Haut/Bas pour sauter d'un rail à un autre.
-   - Anneaux de focus haute visibilité (anneau indigo lumineux contrasté) pour grand écran.
-
-11. **Gestionnaire d'Add-ons Stremio Sécurisé** :
-   - Cartes d'add-ons détaillées avec version, logos, descriptions et types supportés.
-   - **Protection des jetons secrets** : les URLs de manifestes contenant des clés API privées (AIOStreams, Debrid) sont masquées dans l'interface et l'API (`host` seul exposé).
+11. **Application PWA & Gestionnaire d'Add-ons Sécurisé** :
+   - Web App Manifest complet avec icônes adaptatives, affichage `standalone` et installation en 1 clic.
+   - **Protection des jetons secrets** : masquage systématique des tokens Debrid et AIOStreams dans l'interface et l'API.
+   - **Statut de Compte Debrid** : vérification et affichage en temps réel des jours restants d'abonnement Real-Debrid / Torbox (`/api/debrid/status`).
    - Installation en un clic des add-ons recommandés (Torrentio, CyberFlix, Anime Kisa, OpenSubtitles v3).
-   - Possibilité de retirer n'importe quel add-on (y compris Cinemeta).
 
 ---
 

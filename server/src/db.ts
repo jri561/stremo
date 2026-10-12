@@ -54,6 +54,22 @@ export interface TraktAuth {
   updatedAt: string;
 }
 
+export interface PairSession {
+  code: string;
+  status: 'pending' | 'paired' | 'expired';
+  data?: any;
+  channelId?: string;
+  expiresAt: number;
+  createdAt: string;
+}
+
+export interface SyncChannel {
+  channelId: string;
+  name?: string;
+  data: any;
+  updatedAt: string;
+}
+
 export class DatabaseManager {
   private db: DatabaseSync;
 
@@ -119,6 +135,22 @@ export class DatabaseManager {
         refreshToken TEXT,
         expiresAt INTEGER,
         username TEXT,
+        updatedAt TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS pair_sessions (
+        code TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        data TEXT,
+        channelId TEXT,
+        expiresAt INTEGER NOT NULL,
+        createdAt TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sync_channels (
+        channelId TEXT PRIMARY KEY,
+        name TEXT,
+        data TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       );
     `);
@@ -379,5 +411,115 @@ export class DatabaseManager {
     }
 
     return { success: true, importedProfiles, importedAddons, importedLibrary, importedProgress };
+  }
+
+  // --- Device Pairing & Multi-Device Sync ---
+  createPairSession(channelId?: string): { code: string; expiresAt: number } {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const now = Date.now();
+    const expiresAt = now + 10 * 60 * 1000; // 10 minutes
+    const createdAt = new Date().toISOString();
+
+    // Clean up expired sessions
+    this.db.prepare('DELETE FROM pair_sessions WHERE expiresAt < ?').run(now);
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO pair_sessions (code, status, data, channelId, expiresAt, createdAt)
+      VALUES (?, 'pending', NULL, ?, ?, ?)
+    `).run(code, channelId || null, expiresAt, createdAt);
+
+    return { code, expiresAt };
+  }
+
+  getPairSession(code: string): PairSession | null {
+    const row = this.db.prepare('SELECT * FROM pair_sessions WHERE code = ?').get(code) as any;
+    if (!row) return null;
+
+    if (Date.now() > row.expiresAt) {
+      return {
+        code: row.code,
+        status: 'expired',
+        expiresAt: row.expiresAt,
+        createdAt: row.createdAt,
+      };
+    }
+
+    let parsedData: any = undefined;
+    if (row.data) {
+      try {
+        parsedData = JSON.parse(row.data);
+      } catch {
+        parsedData = undefined;
+      }
+    }
+
+    return {
+      code: row.code,
+      status: row.status as any,
+      data: parsedData,
+      channelId: row.channelId || undefined,
+      expiresAt: row.expiresAt,
+      createdAt: row.createdAt,
+    };
+  }
+
+  authorizePairSession(code: string, data: any, channelId?: string): boolean {
+    const session = this.getPairSession(code);
+    if (!session || session.status === 'expired') return false;
+
+    const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+    this.db.prepare(`
+      UPDATE pair_sessions
+      SET status = 'paired', data = ?, channelId = ?
+      WHERE code = ?
+    `).run(dataStr, channelId || null, code);
+
+    // If channelId is present, also update sync channel
+    if (channelId) {
+      this.saveSyncChannel(channelId, data);
+    }
+
+    return true;
+  }
+
+  saveSyncChannel(channelId: string, data: any, name?: string): SyncChannel {
+    const updatedAt = new Date().toISOString();
+    const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO sync_channels (channelId, name, data, updatedAt)
+      VALUES (?, ?, ?, ?)
+    `).run(channelId, name || null, dataStr, updatedAt);
+
+    return {
+      channelId,
+      name,
+      data,
+      updatedAt,
+    };
+  }
+
+  getSyncChannel(channelId: string): SyncChannel | null {
+    const row = this.db.prepare('SELECT * FROM sync_channels WHERE channelId = ?').get(channelId) as any;
+    if (!row) return null;
+
+    let parsedData: any = undefined;
+    try {
+      parsedData = JSON.parse(row.data);
+    } catch {
+      parsedData = row.data;
+    }
+
+    return {
+      channelId: row.channelId,
+      name: row.name || undefined,
+      data: parsedData,
+      updatedAt: row.updatedAt,
+    };
   }
 }

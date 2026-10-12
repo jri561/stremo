@@ -20,10 +20,18 @@ import {
   Sliders,
   FastForward,
   Cast,
+  Moon,
+  Layers,
 } from 'lucide-react';
-import { api } from '../api';
+import { api, type StreamSource } from '../api';
 import { getAndroidIntentUrl } from '../players';
-import { isOutroCreditsDetected } from '../streams';
+import {
+  isOutroCreditsDetected,
+  shouldAutoSkipIntro,
+  getIntroTargetTime,
+  getNextFallbackStream,
+  parseStream,
+} from '../streams';
 
 export interface NextEpisodeInfo {
   id: string;
@@ -50,10 +58,13 @@ interface Props {
   nextEpisode?: NextEpisodeInfo | null;
   profileId?: string;
   mediaInfo?: TraktMediaInfo;
+  availableStreams?: StreamSource[];
+  isSeries?: boolean;
   onProgress?: (currentTime: number, duration: number) => void;
   onClose: () => void;
   onLaunchVLC?: () => void;
   onPlayNextEpisode?: () => void;
+  onSelectStream?: (stream: StreamSource) => void;
 }
 
 export const VideoPlayer: React.FC<Props> = ({
@@ -64,10 +75,13 @@ export const VideoPlayer: React.FC<Props> = ({
   nextEpisode,
   profileId,
   mediaInfo,
+  availableStreams,
+  isSeries,
   onProgress,
   onClose,
   onLaunchVLC,
   onPlayNextEpisode,
+  onSelectStream,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -91,6 +105,11 @@ export const VideoPlayer: React.FC<Props> = ({
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
 
+  // Sélecteur de flux & Auto-Fallback en cas d'erreur
+  const [showStreamSelector, setShowStreamSelector] = useState(false);
+  const [fallbackStream, setFallbackStream] = useState<StreamSource | null>(null);
+  const [fallbackCountdown, setFallbackCountdown] = useState<number | null>(null);
+
   // Binge watching next episode & Saut de génériques (Intro & Outro)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
   const [nextDeclined, setNextDeclined] = useState(false);
@@ -101,10 +120,110 @@ export const VideoPlayer: React.FC<Props> = ({
   const [autoSkipOutro, setAutoSkipOutro] = useState<boolean>(() => {
     return localStorage.getItem('stremo_auto_skip_outro') !== 'false';
   });
+  const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_auto_skip_intro') !== 'false';
+  });
+  const [introDurationSec, setIntroDurationSec] = useState<number>(() => {
+    const saved = localStorage.getItem('stremo_intro_duration_sec');
+    return saved ? Number(saved) : 85;
+  });
+  const hasAutoSkippedIntroRef = useRef(false);
   const [showSkipMenu, setShowSkipMenu] = useState(false);
   const [skipToast, setSkipToast] = useState<string | null>(null);
 
+  // Mode Nuit & Boost Dialogues (Dynamics Compression)
+  const [nightMode, setNightMode] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_night_mode') === 'true';
+  });
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  const toggleNightMode = () => {
+    const nextVal = !nightMode;
+    setNightMode(nextVal);
+    localStorage.setItem('stremo_night_mode', String(nextVal));
+
+    try {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (!audioContextRef.current) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        audioContextRef.current = ctx;
+
+        const source = ctx.createMediaElementSource(video);
+        sourceNodeRef.current = source;
+
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-24, ctx.currentTime);
+        compressor.knee.setValueAtTime(30, ctx.currentTime);
+        compressor.ratio.setValueAtTime(12, ctx.currentTime);
+        compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+        compressor.release.setValueAtTime(0.25, ctx.currentTime);
+        compressorRef.current = compressor;
+      }
+
+      const ctx = audioContextRef.current;
+      const source = sourceNodeRef.current;
+      const compressor = compressorRef.current;
+
+      if (ctx && source && compressor) {
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        source.disconnect();
+        if (nextVal) {
+          source.connect(compressor);
+          compressor.connect(ctx.destination);
+          setSkipToast("Mode Nuit & Boost Dialogues activé");
+        } else {
+          source.connect(ctx.destination);
+          setSkipToast("Mode Nuit désactivé (son cinéma)");
+        }
+        setTimeout(() => setSkipToast(null), 2000);
+      }
+    } catch (err) {
+      console.warn('Audio compression fallback:', err);
+      setSkipToast(nextVal ? "Mode Nuit activé" : "Mode Nuit désactivé");
+      setTimeout(() => setSkipToast(null), 2000);
+    }
+  };
+
   const hideControlsTimer = useRef<any>(null);
+
+  const triggerPlaybackError = (errorMessage: string) => {
+    setBuffering(false);
+    setPlaybackError(errorMessage);
+    if (availableStreams && onSelectStream) {
+      const next = getNextFallbackStream(streamUrl, availableStreams);
+      if (next && next.url) {
+        setFallbackStream(next);
+        setFallbackCountdown(3);
+      }
+    }
+  };
+
+  // Compte à rebours avant basculement automatique sur le flux suivant
+  useEffect(() => {
+    if (fallbackCountdown === null) return;
+    if (fallbackCountdown <= 0) {
+      if (fallbackStream && onSelectStream) {
+        const target = fallbackStream;
+        setFallbackStream(null);
+        setFallbackCountdown(null);
+        setPlaybackError(null);
+        onSelectStream(target);
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      setFallbackCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [fallbackCountdown, fallbackStream, onSelectStream]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -112,6 +231,9 @@ export const VideoPlayer: React.FC<Props> = ({
 
     let hls: Hls | null = null;
     setPlaybackError(null);
+    setFallbackStream(null);
+    setFallbackCountdown(null);
+    hasAutoSkippedIntroRef.current = false;
     setBuffering(true);
 
     const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('hls');
@@ -131,7 +253,7 @@ export const VideoPlayer: React.FC<Props> = ({
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
           console.warn('HLS Fatal error:', data);
-          setPlaybackError('Flux direct non décodable dans le navigateur web. Ouvrez-le dans Nova, Just Player ou VLC.');
+          triggerPlaybackError('Flux direct non décodable dans le navigateur web. Format incompatible.');
         }
       });
     } else {
@@ -142,8 +264,7 @@ export const VideoPlayer: React.FC<Props> = ({
         video.play().catch(() => setIsPlaying(false));
       };
       video.onerror = () => {
-        setBuffering(false);
-        setPlaybackError('Format vidéo ou codec audio (ex: DTS / AC3 / HEVC) non décodable directement dans ce navigateur. Vous pouvez le lire immédiatement dans votre lecteur externe.');
+        triggerPlaybackError('Format vidéo ou codec audio (ex: DTS / AC3 / HEVC) non décodable directement dans ce navigateur.');
       };
     }
 
@@ -160,6 +281,22 @@ export const VideoPlayer: React.FC<Props> = ({
     setDuration(dur);
     if (onProgress && Math.floor(curr) % 5 === 0) {
       onProgress(curr, dur);
+    }
+
+    // Saut automatique du générique d'ouverture (Intro) pour les séries
+    if (
+      (isSeries || mediaInfo?.type === 'episode') &&
+      autoSkipIntro &&
+      !hasAutoSkippedIntroRef.current &&
+      shouldAutoSkipIntro(curr, dur, autoSkipIntro)
+    ) {
+      hasAutoSkippedIntroRef.current = true;
+      const targetTime = getIntroTargetTime(curr, dur, introDurationSec);
+      if (videoRef.current) {
+        videoRef.current.currentTime = targetTime;
+        setSkipToast(`Intro sautée automatiquement (+${introDurationSec}s) ⏭️`);
+        setTimeout(() => setSkipToast(null), 2500);
+      }
     }
 
     // Détection automatique du début du générique de fin pour séries
@@ -194,6 +331,17 @@ export const VideoPlayer: React.FC<Props> = ({
     const nextVal = !autoSkipOutro;
     setAutoSkipOutro(nextVal);
     localStorage.setItem('stremo_auto_skip_outro', String(nextVal));
+  };
+
+  const handleToggleAutoSkipIntro = () => {
+    const nextVal = !autoSkipIntro;
+    setAutoSkipIntro(nextVal);
+    localStorage.setItem('stremo_auto_skip_intro', String(nextVal));
+  };
+
+  const handleSetIntroDurationSec = (sec: number) => {
+    setIntroDurationSec(sec);
+    localStorage.setItem('stremo_intro_duration_sec', String(sec));
   };
 
   // Compte à rebours avant l'épisode suivant
@@ -475,6 +623,47 @@ export const VideoPlayer: React.FC<Props> = ({
       {/* Fallback Panel with Mobile & Desktop options */}
       {playbackError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md p-6 text-center max-w-lg mx-auto my-auto rounded-3xl border border-white/10 shadow-2xl z-40">
+          {/* Bandeau d'auto-fallback si un flux suivant est disponible */}
+          {fallbackCountdown !== null && fallbackStream && (
+            <div className="w-full p-4 mb-4 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-8 h-8 rounded-full bg-amber-500/30 text-amber-300 font-black flex items-center justify-center shrink-0">
+                  {fallbackCountdown}s
+                </span>
+                <div className="text-left truncate">
+                  <div className="font-bold text-white truncate">Basculement auto en cours...</div>
+                  <div className="text-[11px] text-amber-300 truncate">Flux suivant : {fallbackStream.name || 'Version alternative'}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => {
+                    if (fallbackStream && onSelectStream) {
+                      const target = fallbackStream;
+                      setFallbackStream(null);
+                      setFallbackCountdown(null);
+                      setPlaybackError(null);
+                      onSelectStream(target);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition cursor-pointer"
+                >
+                  Basculer
+                </button>
+                <button
+                  onClick={() => {
+                    setFallbackCountdown(null);
+                    setFallbackStream(null);
+                  }}
+                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white transition cursor-pointer"
+                  title="Annuler le basculement automatique"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="w-14 h-14 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3.5 shadow-lg">
             <Radio className="w-7 h-7" />
           </div>
@@ -483,10 +672,21 @@ export const VideoPlayer: React.FC<Props> = ({
             Ce fichier utilise un format haute fidélité (4K ou audio multicanal). Pour en profiter sans coupure, lancez-le dans votre lecteur ou choisissez une version directe.
           </p>
           <div className="flex flex-col gap-2.5 w-full">
+            {availableStreams && availableStreams.length > 1 && onSelectStream && (
+              <button
+                onClick={() => {
+                  setShowStreamSelector(true);
+                }}
+                className="w-full px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400"
+              >
+                <Layers className="w-4 h-4" />
+                Choisir un autre flux ({availableStreams.length} disponibles)
+              </button>
+            )}
             {onLaunchVLC && (
               <button
                 onClick={onLaunchVLC}
-                className="w-full px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400"
+                className="w-full px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 border border-white/10 transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-white/30"
               >
                 <ExternalLink className="w-4 h-4" />
                 🎬 Lancer sur cet écran (VLC)
@@ -503,9 +703,10 @@ export const VideoPlayer: React.FC<Props> = ({
             </button>
             <button
               onClick={onClose}
-              className="w-full px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs flex items-center justify-center gap-2 border border-white/10 transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-white/30"
+              className="w-full px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs flex items-center justify-center gap-2 border border-white/5 transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-white/30"
             >
-              🔄 Choisir une autre version compatible Web
+              <X className="w-4 h-4" />
+              Fermer le lecteur
             </button>
           </div>
         </div>
@@ -697,6 +898,26 @@ export const VideoPlayer: React.FC<Props> = ({
               >
                 {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
               </button>
+
+              {/* Mode Nuit / Boost Dialogues */}
+              <button
+                onClick={toggleNightMode}
+                className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 ${
+                  nightMode
+                    ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+                title={
+                  nightMode
+                    ? 'Mode Nuit & Boost Dialogues Actif (calme les explosions, augmente les voix)'
+                    : 'Activer le Mode Nuit & Boost Dialogues'
+                }
+              >
+                <Moon className={`w-4 h-4 ${nightMode ? 'text-indigo-400 fill-indigo-400/30' : ''}`} />
+                <span className="text-[10px] font-bold hidden sm:inline">
+                  {nightMode ? 'Nuit' : ''}
+                </span>
+              </button>
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 relative">
@@ -806,6 +1027,44 @@ export const VideoPlayer: React.FC<Props> = ({
                           }`}
                         />
                       </button>
+                    </div>
+
+                    {/* Intro Skip Settings */}
+                    <div className="pt-2 border-t border-white/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white block">Saut automatique d'intro</span>
+                          <span className="text-[11px] text-slate-400 block">Sauter l'intro dès le début</span>
+                        </div>
+                        <button
+                          onClick={handleToggleAutoSkipIntro}
+                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                            autoSkipIntro ? 'bg-indigo-600' : 'bg-white/20'
+                          }`}
+                          title={autoSkipIntro ? "Désactiver le saut d'intro auto" : "Activer le saut d'intro auto"}
+                        >
+                          <span
+                            className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                              autoSkipIntro ? 'translate-x-5' : ''
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[45, 60, 85, 90].map((sec) => (
+                          <button
+                            key={sec}
+                            onClick={() => handleSetIntroDurationSec(sec)}
+                            className={`py-1 px-1 rounded-xl text-xs font-bold transition cursor-pointer text-center ${
+                              introDurationSec === sec
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            +{sec}s
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="pt-2 border-t border-white/5 space-y-1.5">
@@ -961,6 +1220,82 @@ export const VideoPlayer: React.FC<Props> = ({
                             </button>
                           ))}
                         </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sélecteur de flux alternatifs en cours de lecture */}
+              {availableStreams && availableStreams.length > 1 && onSelectStream && (
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowStreamSelector(!showStreamSelector);
+                      setShowSubMenu(false);
+                      setShowSpeedMenu(false);
+                      setShowSkipMenu(false);
+                    }}
+                    className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                      showStreamSelector
+                        ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Changer de flux vidéo sans quitter le lecteur"
+                  >
+                    <Layers className="w-4 h-4" />
+                    <span className="text-xs font-bold hidden md:inline">Flux ({availableStreams.length})</span>
+                  </button>
+
+                  {showStreamSelector && (
+                    <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2">
+                      <div className="text-[10px] font-black uppercase text-slate-400 mb-1 flex items-center justify-between">
+                        <span>Flux alternatifs</span>
+                        <span className="text-indigo-400 font-semibold">{availableStreams.length} flux</span>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                        {availableStreams.filter((s) => !!s.url).map((s, idx) => {
+                          const isCurrent = s.url === streamUrl;
+                          const parsed = parseStream(s);
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setShowStreamSelector(false);
+                                if (!isCurrent) {
+                                  onSelectStream(s);
+                                }
+                              }}
+                              className={`w-full p-2 rounded-xl text-left transition flex items-center justify-between cursor-pointer border ${
+                                isCurrent
+                                  ? 'bg-indigo-600/20 text-white border-indigo-500/40'
+                                  : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-transparent'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                    {parsed.resolutionLabel}
+                                  </span>
+                                  {parsed.cached && (
+                                    <span className="text-[10px] font-bold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                                      ⚡ {parsed.debrid || 'Debrid'}
+                                    </span>
+                                  )}
+                                  {parsed.sizeLabel && (
+                                    <span className="text-[10px] text-slate-400">
+                                      {parsed.sizeLabel}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs font-medium truncate">
+                                  {s.name || parsed.provider}
+                                </div>
+                              </div>
+                              {isCurrent && <Check className="w-4 h-4 text-indigo-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

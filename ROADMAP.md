@@ -127,16 +127,22 @@ flowchart LR
 4. **Base Communautaire de Chapitrage (AniSkip / TheTVDB Chaptering)** :
    - Détection des génériques basée sur les timecodes exacts vérifiés par la communauté pour un saut d'intro/outro au millième de seconde près.
 
-### 📍 Phase 2 : Écosystème Salon, Android TV & Cast (Moyen Terme)
-1. **Application Dédiée Android TV / Google TV (APK Native)** :
-   - Interface d'accueil orientée 10 pieds (10-foot UI) optimisée à 100% pour la télécommande standard.
-   - Intégration dans le rail « Continuer à regarder » d'Android TV.
-2. **Support Chromecast (Google Cast) & AirPlay** :
-   - Bouton de cast directement dans le lecteur vidéo pour diffuser sur n'importe quel téléviseur du réseau local sans fil.
-3. **Multi-Comptes Debrid Simultanés** :
-   - Agrégation conjointe de plusieurs comptes Debrid (ex: Real-Debrid + Torbox + Premiumize) avec basculement automatique en cas de panne de l'un des fournisseurs.
-4. **Profils Invités & Restrictions Temporelles** :
-   - Plages horaires d'utilisation configurables pour les profils enfants (ex: arrêt automatique à 20h30).
+### 📍 Phase 2 : Écosystème Salon, Android TV, Sync Foyer & Robustesse (Terminé ✓)
+1. **Appairage Express TV / PC / Mobile & Synchro Continue** :
+   - ✅ Code PIN 6 caractères & QR Code pour appairer n'importe quel écran TV en 5 secondes sans saisir de mot de passe.
+   - ✅ Canal de synchronisation continue du foyer (Family Sync Hub) avec auto-push et auto-pull en tâche de fond.
+2. **Interface Salon 10-Pieds (10-Foot UI)** :
+   - ✅ Détection automatique des appareils Smart TV (Android TV, Tizen, WebOS, Fire TV, Chromecast).
+   - ✅ Raccourci clavier / télécommande `T` et bouton dédié pour activer le mode TV.
+   - ✅ Affiches et typographie agrandies haute lisibilité, focus rings amplifiés, bandeau d'assistance télécommande.
+3. **Auto-Fallback & Sélecteur de Flux en Direct** :
+   - ✅ Basculement automatique transparent vers le flux suivant en cas d'erreur de lecture (compte à rebours 3s).
+   - ✅ Sélecteur de flux en direct dans le lecteur vidéo sans interruption (`Flux (N)`).
+4. **Mode Nuit & Boost Dialogues Audio** :
+   - ✅ Compresseur dynamique audio Web Audio API pour adoucir les déflagrations et magnifier les dialogues de nuit.
+5. **Saut Automatique d'Intro & Vérification Debrid** :
+   - ✅ Saut automatique d'intro configurable par profil (+85s par défaut).
+   - ✅ Endpoint de suivi du statut et des jours d'abonnement Real-Debrid et Torbox.
 
 ### 📍 Phase 3 : Moteur Torrent Intégré & Haute Performance (Long Terme)
 1. **Moteur Torrent WebTorrent / Libtorrent Embarqué** :

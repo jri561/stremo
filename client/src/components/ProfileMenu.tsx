@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database } from 'lucide-react';
+import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database, Radio } from 'lucide-react';
 import type { Profile } from '../api';
 
 interface Props {
@@ -12,6 +12,9 @@ interface Props {
   onOpenSelector: () => void;
   onOpenTrakt?: () => void;
   onOpenBackup?: () => void;
+  onOpenDeviceSync?: () => void;
+  onToggleTvMode?: () => void;
+  isTvMode?: boolean;
 }
 
 export const ProfileMenu: React.FC<Props> = ({
@@ -23,6 +26,9 @@ export const ProfileMenu: React.FC<Props> = ({
   onOpenSelector,
   onOpenTrakt,
   onOpenBackup,
+  onOpenDeviceSync,
+  onToggleTvMode,
+  isTvMode,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -158,6 +164,36 @@ export const ProfileMenu: React.FC<Props> = ({
               >
                 <Tv className="w-4 h-4 text-red-400" />
                 Scrobble Trakt.tv
+              </button>
+            )}
+
+            {onOpenDeviceSync && (
+              <button
+                onClick={() => {
+                  onOpenDeviceSync();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-indigo-300 hover:text-white hover:bg-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
+              >
+                <Radio className="w-4 h-4 text-indigo-400" />
+                Lier Télé, PC & Mobile
+              </button>
+            )}
+
+            {onToggleTvMode && (
+              <button
+                onClick={() => {
+                  onToggleTvMode();
+                  setIsOpen(false);
+                }}
+                className={`w-full p-2 rounded-xl text-left text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                  isTvMode
+                    ? 'text-indigo-300 bg-indigo-600/20'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Tv className="w-4 h-4 text-indigo-400" />
+                {isTvMode ? 'Quitter le Mode TV' : 'Activer le Mode TV 10-pieds'}
               </button>
             )}
 

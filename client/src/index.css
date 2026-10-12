@@ -68,6 +68,19 @@ html, body {
   z-index: 20;
 }
 
+/* Mode Salon TV 10-pieds (Haute Lisibilité & Focus Amplifié) */
+.tv-mode-active {
+  font-size: 1.05rem;
+}
+.tv-mode-active :focus-visible, .tv-mode-active .dpad-focused {
+  outline: 3.5px solid #818cf8 !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 35px rgba(99, 102, 241, 0.65) !important;
+  transform: scale(1.06) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 30;
+}
+
 /* Subtle fade in for views */
 @keyframes fadeInView {
   from { opacity: 0; transform: translateY(4px); }

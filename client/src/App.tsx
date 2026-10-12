@@ -12,6 +12,8 @@ import {
   Lock,
   Download,
   Database,
+  Radio,
+  Tv,
 } from 'lucide-react';
 import { api, accessKey, isKidsSafeItem } from './api';
 import type {
@@ -36,8 +38,9 @@ import { SearchView } from './components/SearchView';
 import { DiscoverView } from './components/DiscoverView';
 import { BackupModal } from './components/BackupModal';
 import { TraktModal } from './components/TraktModal';
+import { DeviceSyncModal } from './components/DeviceSyncModal';
 import type { PlayerChoice } from './players';
-import { rankStreams } from './streams';
+import { rankStreams, detectTvDevice } from './streams';
 
 export function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -76,6 +79,8 @@ export function App() {
   const [showAddonsModal, setShowAddonsModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showTraktModal, setShowTraktModal] = useState(false);
+  const [showDeviceSyncModal, setShowDeviceSyncModal] = useState(false);
+  const [initialPairCode, setInitialPairCode] = useState<string | undefined>(undefined);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authKeyInput, setAuthKeyInput] = useState('');
   const [selectedVideoId, setSelectedVideoId] = useState<string | undefined>(undefined);
@@ -88,7 +93,64 @@ export function App() {
   const [pinCodeInput, setPinCodeInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
 
+  // Mode TV / Salon 10-pieds
+  const [isTvMode, setIsTvMode] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_tv_mode') === 'true' || detectTvDevice(navigator.userAgent);
+  });
+  const toggleTvMode = () => {
+    const nextVal = !isTvMode;
+    setIsTvMode(nextVal);
+    localStorage.setItem('stremo_tv_mode', String(nextVal));
+  };
+
+  // Raccourci clavier 'T' pour basculer le Mode TV
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+      if ((e.key === 't' || e.key === 'T') && !activePlayerStream) {
+        e.preventDefault();
+        toggleTvMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activePlayerStream, isTvMode]);
+
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  // Détection d'un code d'appairage dans l'URL (?pairCode=XXXXXX)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('pairCode');
+      if (code) {
+        setInitialPairCode(code.toUpperCase());
+        setShowDeviceSyncModal(true);
+      }
+    } catch {}
+  }, []);
+
+  // Synchronisation continue du foyer en arrière-plan
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      const isSyncEnabled = localStorage.getItem('stremo_continuous_sync') === 'true';
+      const channelKey = localStorage.getItem('stremo_family_sync_key');
+      if (isSyncEnabled && channelKey && !activePlayerStream) {
+        try {
+          const channel = await api.pullSyncChannel(channelKey);
+          if (channel?.data) {
+            // Mise à jour douce de l'historique et des profils
+            if (activeProfile) {
+              loadProfileData(activeProfile.id);
+            }
+          }
+        } catch {}
+      }
+    }, 45000); // Toutes les 45 secondes
+
+    return () => clearInterval(syncInterval);
+  }, [activeProfile, activePlayerStream]);
 
   useEffect(() => {
     loadProfiles();
@@ -527,7 +589,23 @@ export function App() {
           onCreateProfile={handleCreateProfile}
           onUpdateProfile={handleUpdateProfile}
           onDeleteProfile={handleDeleteProfile}
+          onOpenDeviceSync={() => setShowDeviceSyncModal(true)}
+          onToggleTvMode={toggleTvMode}
+          isTvMode={isTvMode}
         />
+        {showDeviceSyncModal && (
+          <DeviceSyncModal
+            initialPairCode={initialPairCode}
+            onClose={() => {
+              setShowDeviceSyncModal(false);
+              setInitialPairCode(undefined);
+            }}
+            onDataSynced={() => {
+              loadProfiles();
+              loadAddons();
+            }}
+          />
+        )}
       </main>
     );
   }
@@ -535,7 +613,7 @@ export function App() {
   const isSearchActive = activeNav === 'search' || searchQuery.trim().length > 0;
 
   return (
-    <div className="flex h-screen bg-[#07090e] text-slate-100 overflow-hidden font-sans">
+    <div className={`flex h-screen bg-[#07090e] text-slate-100 overflow-hidden font-sans ${isTvMode ? 'tv-mode-active' : ''}`}>
       {/* 1. SIDEBAR DESKTOP PROFESSIONNELLE */}
       <aside className="hidden md:flex w-16 lg:w-18 bg-[#05060a] border-r border-white/8 flex-col items-center py-5 justify-between shrink-0 z-40">
         <div className="flex flex-col items-center gap-7 w-full">
@@ -627,6 +705,13 @@ export function App() {
             </button>
           )}
           <button
+            onClick={() => setShowDeviceSyncModal(true)}
+            className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
+            title="Lier Téléviseur, Mobile & PC"
+          >
+            <Radio className="w-5 h-5 text-indigo-400" />
+          </button>
+          <button
             onClick={() => setShowBackupModal(true)}
             className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
             title="Sauvegarde & Multi-écrans"
@@ -705,7 +790,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Menu Profil & PWA */}
+          {/* Menu Profil & PWA & Appairage TV */}
           <div className="flex items-center gap-2 shrink-0">
             {installPrompt && (
               <button
@@ -717,6 +802,29 @@ export function App() {
                 <span className="hidden sm:inline">Installer l'app</span>
               </button>
             )}
+
+            <button
+              onClick={toggleTvMode}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                isTvMode
+                  ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300 shadow-md shadow-indigo-500/20'
+                  : 'bg-white/5 hover:bg-white/10 border-white/5 text-slate-300 hover:text-white'
+              }`}
+              title="Basculer le Mode TV / Salon 10-pieds (Raccourci : Touche T)"
+            >
+              <Tv className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">{isTvMode ? 'Mode TV ✓' : 'Mode TV'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowDeviceSyncModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Lier Téléviseur, Ordinateur et Téléphone"
+            >
+              <Radio className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Lier TV</span>
+            </button>
+
             <ProfileMenu
               profiles={profiles}
               activeProfile={activeProfile}
@@ -726,6 +834,9 @@ export function App() {
               onOpenSelector={() => setActiveProfile(null)}
               onOpenTrakt={() => setShowTraktModal(true)}
               onOpenBackup={() => setShowBackupModal(true)}
+              onOpenDeviceSync={() => setShowDeviceSyncModal(true)}
+              onToggleTvMode={toggleTvMode}
+              isTvMode={isTvMode}
             />
           </div>
         </header>
@@ -1129,6 +1240,9 @@ export function App() {
           subtitles={subtitles}
           nextEpisode={nextEpisode}
           profileId={activeProfile?.id}
+          availableStreams={streams}
+          isSeries={selectedItem?.type === 'series'}
+          onSelectStream={(newStream) => setActivePlayerStream(newStream)}
           mediaInfo={
             selectedItem
               ? {
@@ -1188,6 +1302,51 @@ export function App() {
           profileName={activeProfile.name}
           onClose={() => setShowTraktModal(false)}
         />
+      )}
+
+      {/* Modale Appairage Express & Synchronisation TV, PC & Mobile */}
+      {showDeviceSyncModal && (
+        <DeviceSyncModal
+          initialPairCode={initialPairCode}
+          onClose={() => {
+            setShowDeviceSyncModal(false);
+            setInitialPairCode(undefined);
+          }}
+          onDataSynced={() => {
+            loadProfiles();
+            loadAddons();
+            if (activeProfile) {
+              loadProfileData(activeProfile.id);
+            }
+          }}
+        />
+      )}
+
+      {/* Barre d'assistance Télécommande Mode TV */}
+      {isTvMode && !activePlayerStream && (
+        <aside
+          aria-label="Aide navigation télécommande"
+          className="fixed bottom-0 inset-x-0 z-40 bg-[#07090e]/95 backdrop-blur-md border-t border-indigo-500/30 px-6 py-2.5 flex items-center justify-between text-xs text-slate-300 shadow-2xl animate-fade-in"
+        >
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5 font-bold text-white">
+              <Tv className="w-4 h-4 text-indigo-400" />
+              <span>Mode Salon TV 10-pieds</span>
+            </span>
+            <span className="hidden sm:inline text-slate-400">•</span>
+            <span className="hidden sm:flex items-center gap-2 text-slate-300">
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">▲▼◄►</kbd> Naviguer
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">OK</kbd> Choisir
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">T</kbd> Quitter TV
+            </span>
+          </div>
+          <button
+            onClick={toggleTvMode}
+            className="text-xs text-indigo-400 hover:text-indigo-300 underline font-semibold cursor-pointer"
+          >
+            Quitter le Mode TV
+          </button>
+        </aside>
       )}
     </div>
   );

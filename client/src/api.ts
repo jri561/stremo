@@ -343,7 +343,8 @@ export const api = {
   exportBackup: async (): Promise<BackupData> => {
     const res = await fetch(`${API_BASE}/backup/export`);
     if (!res.ok) throw new Error("Échec de l'exportation de la sauvegarde");
-    return res.json();
+    const data = await res.json();
+    return data.backup || data;
   },
   importBackup: async (backupData: any): Promise<{ success: boolean; message: string }> => {
     const res = await fetch(`${API_BASE}/backup/import`, {
@@ -356,6 +357,63 @@ export const api = {
       throw new Error(data.error || "Échec de l'importation de la sauvegarde");
     }
     return data;
+  },
+  createPairSession: async (channelId?: string): Promise<{ code: string; expiresAt: number }> => {
+    const res = await fetch(`${API_BASE}/sync/pair/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelId }),
+    });
+    if (!res.ok) throw new Error("Impossible de générer le code d'association");
+    return res.json();
+  },
+  checkPairSession: async (code: string): Promise<{ status: 'pending' | 'paired' | 'expired'; data?: any; channelId?: string }> => {
+    const res = await fetch(`${API_BASE}/sync/pair/check/${encodeURIComponent(code)}`);
+    if (!res.ok) throw new Error("Code d'association expiré ou introuvable");
+    const json = await res.json();
+    return json.session;
+  },
+  authorizePairSession: async (code: string, data: any, channelId?: string): Promise<{ success: boolean; message: string }> => {
+    const res = await fetch(`${API_BASE}/sync/pair/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, data, channelId }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Échec de l'association de l'appareil");
+    }
+    return json;
+  },
+  pushSyncChannel: async (channelId: string, data: any, name?: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/sync/channel/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId, data, name }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+  pullSyncChannel: async (channelId: string): Promise<{ data: any; updatedAt: string } | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/sync/channel/pull/${encodeURIComponent(channelId)}`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.channel || null;
+    } catch {
+      return null;
+    }
+  },
+  checkDebridStatus: async (service: 'realdebrid' | 'torbox', token: string) => {
+    const res = await fetch(`${API_BASE}/debrid/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service, token }),
+    });
+    return res.json();
   },
 };
 

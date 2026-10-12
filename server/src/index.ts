@@ -275,12 +275,130 @@ app.get('/api/backup/export', (req, res) => {
 
 app.post('/api/backup/import', (req, res) => {
   try {
-    const { backup } = req.body;
+    const backup = req.body.backup || req.body;
     if (!backup || typeof backup !== 'object') {
       return res.status(400).json({ success: false, error: 'Données de sauvegarde invalides' });
     }
-    const result = db.importData(backup);
+    const overwrite = req.body.overwrite === true;
+    const result = db.importData(backup, overwrite);
     res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- APPAIRAGE D'APPAREIL EXPRESS & SYNCHRONISATION MULTI-ÉCRANS ---
+app.post('/api/sync/pair/create', (req, res) => {
+  try {
+    const { channelId } = req.body || {};
+    const session = db.createPairSession(channelId);
+    res.json({ success: true, code: session.code, expiresAt: session.expiresAt });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sync/pair/check/:code', (req, res) => {
+  try {
+    const code = req.params.code?.toUpperCase().trim();
+    const session = db.getPairSession(code);
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Code de session introuvable' });
+    }
+    res.json({ success: true, session });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/sync/pair/authorize', (req, res) => {
+  try {
+    const { code, data, channelId } = req.body;
+    if (!code || !data) {
+      return res.status(400).json({ success: false, error: 'Code et données requis' });
+    }
+    const cleanCode = String(code).toUpperCase().trim();
+    const success = db.authorizePairSession(cleanCode, data, channelId);
+    if (!success) {
+      return res.status(400).json({ success: false, error: 'Code expiré ou invalide' });
+    }
+    res.json({ success: true, message: 'Appareil appairé avec succès !' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/sync/channel/push', (req, res) => {
+  try {
+    const { channelId, data, name } = req.body;
+    if (!channelId || !data) {
+      return res.status(400).json({ success: false, error: 'Identifiant de canal et données requis' });
+    }
+    const channel = db.saveSyncChannel(channelId, data, name);
+    res.json({ success: true, channel });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sync/channel/pull/:channelId', (req, res) => {
+  try {
+    const channel = db.getSyncChannel(req.params.channelId);
+    if (!channel) {
+      return res.status(404).json({ success: false, error: 'Canal de synchronisation introuvable' });
+    }
+    res.json({ success: true, channel });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- VÉRIFICATION DU STATUT DEBRID (REAL-DEBRID & TORBOX) ---
+app.post('/api/debrid/status', async (req, res) => {
+  try {
+    const { service = 'realdebrid', token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token API Debrid requis' });
+    }
+
+    if (service === 'realdebrid') {
+      const resp = await fetch('https://api.real-debrid.com/rest/10/user', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        return res.status(resp.status).json({ success: false, error: 'Jeton Real-Debrid invalide ou expiré' });
+      }
+      const data: any = await resp.json();
+      const expirationDate = data.expiration ? new Date(data.expiration) : null;
+      const daysLeft = expirationDate ? Math.max(0, Math.ceil((expirationDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
+      return res.json({
+        success: true,
+        service: 'Real-Debrid',
+        username: data.username,
+        type: data.type,
+        premium: data.type === 'premium',
+        expiration: data.expiration,
+        daysLeft,
+        points: data.points,
+      });
+    }
+
+    if (service === 'torbox') {
+      const resp = await fetch('https://api.torbox.app/v1/api/user/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        return res.status(resp.status).json({ success: false, error: 'Jeton Torbox invalide ou expiré' });
+      }
+      const data: any = await resp.json();
+      return res.json({
+        success: true,
+        service: 'Torbox',
+        data: data.data || data,
+      });
+    }
+
+    return res.status(400).json({ success: false, error: 'Service debrid non supporté' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -142,3 +142,43 @@ test('DatabaseManager Backup export and import (merge and overwrite)', () => {
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
   if (fs.existsSync(targetDbPath)) fs.unlinkSync(targetDbPath);
 });
+
+test('DatabaseManager Device Pairing (6-digit code) and Sync Channel', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test-pairing.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+
+  // 1. Generate 6-digit pair session
+  const session = db.createPairSession('FAMILY-KEY-42');
+  assert.strictEqual(typeof session.code, 'string');
+  assert.strictEqual(session.code.length, 6);
+  assert.ok(session.expiresAt > Date.now());
+
+  // 2. Initial state is pending
+  const checkInitial = db.getPairSession(session.code);
+  assert.notStrictEqual(checkInitial, null);
+  assert.strictEqual(checkInitial?.status, 'pending');
+  assert.strictEqual(checkInitial?.data, undefined);
+
+  // 3. Authorize pairing from another device
+  const dummyPayload = {
+    profiles: [{ id: 'p1', name: 'Papa' }],
+    addons: [{ id: 'cinemeta', name: 'Cinemeta' }],
+  };
+  const success = db.authorizePairSession(session.code, dummyPayload, 'FAMILY-KEY-42');
+  assert.strictEqual(success, true);
+
+  // 4. Verifying paired state and payload delivery
+  const checkPaired = db.getPairSession(session.code);
+  assert.strictEqual(checkPaired?.status, 'paired');
+  assert.deepStrictEqual(checkPaired?.data, dummyPayload);
+
+  // 5. Verifying persistent sync channel
+  const channel = db.getSyncChannel('FAMILY-KEY-42');
+  assert.notStrictEqual(channel, null);
+  assert.deepStrictEqual(channel?.data, dummyPayload);
+
+  // Clean up
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
