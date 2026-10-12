@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Search,
   Zap,
+  Download,
 } from 'lucide-react';
 import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress } from '../api';
 import { AVAILABLE_PLAYERS, getAndroidIntentUrl } from '../players';
@@ -594,14 +595,29 @@ export const MediaModal: React.FC<Props> = ({
                           </p>
                         </div>
 
-                        {/* Bouton de lecture */}
-                        <button
-                          onClick={() => handleLaunch(parsed.stream)}
-                          className="px-4 py-2 rounded-xl font-bold text-xs bg-white text-black hover:bg-slate-200 flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer shadow-md active:scale-95"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-black" />
-                          <span>Lire</span>
-                        </button>
+                        {/* Boutons d'action */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {parsed.stream.url && (
+                            <a
+                              href={parsed.stream.url}
+                              download={parsed.fileName || `${detail.name}.mp4`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition cursor-pointer"
+                              title="Télécharger la vidéo hors-ligne"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleLaunch(parsed.stream)}
+                            className="px-4 py-2 rounded-xl font-bold text-xs bg-white text-black hover:bg-slate-200 flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer shadow-md active:scale-95"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-black" />
+                            <span>Lire</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

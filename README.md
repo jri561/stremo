@@ -52,6 +52,8 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
 
 6. **Lecteur Vidéo Next-Gen & Saut des Génériques (Intro & Outro)** :
    - **Saut du générique de fin & Binge-Watching** : détection intelligente dès le début du générique de fin (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours automatique ou clic immédiat (`Touche N`).
+   - **Google Cast & Apple AirPlay** : diffusion directe sur vos Smart TV, Chromecast et récepteurs AirPlay via les API standard Web et Remote Playback.
+   - **Téléchargement hors-ligne direct** : bouton 1-clic pour les flux Debrid et liens HTTP directs afin de visionner sans connexion.
    - **Saut du générique d'ouverture (Passer l'intro)** : bouton flottant élégant dans les premières minutes de l'épisode pour avancer de 85 secondes en un clic (`Touche S`).
    - **Menu Dédié « Génériques »** : réglage en direct du seuil de détection du générique de fin et activation/désactivation de l'enchaînement automatique mémorisé dans le profil.
    - **Synchronisation fine des sous-titres** : réglage en direct du décalage (`+/-0.5s`, `+/-1.0s`, `0s Reset`) pour synchroniser n'importe quel fichier SRT/VTT OpenSubtitles.
@@ -62,18 +64,29 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - Lancement direct dans les lecteurs externes desktop : **VLC**, **MPV**, lecteur système (`xdg-open`).
    - Protocoles Intents Android : **Just Player**, **Nova Video Player**, **MX Player**, sélecteur universel Android.
 
-7. **Application PWA (Progressive Web App) & Installation en 1 Clic** :
+7. **Scrobble Trakt.tv Bidirectionnel & Suivi Automatique** :
+   - Association de compte Trakt.tv personnalisée par profil.
+   - Envoi automatique du scrobble en temps réel (`start` à la lecture, `pause` lors des arrêts, `stop` avec marquage comme « Vu » dès 80%).
+   - Proxy sécurisé côté serveur (`/api/trakt/scrobble`) pour respecter les en-têtes officiels de l'API Trakt v2.
+
+8. **Sauvegarde & Synchronisation Multi-Écrans (Export / Import 1-Clic)** :
+   - Sauvegarde complète de la configuration : profils, add-ons installés, bibliothèque de favoris et historique d'avancement.
+   - Exportation instantanée au format JSON ou copie dans le presse-papier.
+   - Restauration multi-écrans avec modes **Fusion intelligente** (ajoute sans écraser) ou **Remplacement intégral**.
+   - Idéal pour migrer ou synchroniser sa configuration entre PC de salon, smartphone, tablette et TV connectée.
+
+9. **Application PWA (Progressive Web App) & Installation en 1 Clic** :
    - Web App Manifest complet avec icônes adaptatives et affichage `standalone`.
    - Bouton d'installation intégré (« Installer l'app ») sur Android, iOS, Windows, Mac et Chromebook.
    - Service Worker pour une mise en cache résiliente des ressources de base de l'application.
 
-8. **Navigation Télécommande / Clavier (D-Pad & Smart TV)** :
+10. **Navigation Télécommande / Clavier (D-Pad & Smart TV)** :
    - Accessibilité complète avec les 4 flèches directionnelles et la touche Entrée.
    - Flèches Gauche/Droite pour naviguer et faire défiler les rails de films.
    - Flèches Haut/Bas pour sauter d'un rail à un autre.
    - Anneaux de focus haute visibilité (anneau indigo lumineux contrasté) pour grand écran.
 
-9. **Gestionnaire d'Add-ons Stremio Sécurisé** :
+11. **Gestionnaire d'Add-ons Stremio Sécurisé** :
    - Cartes d'add-ons détaillées avec version, logos, descriptions et types supportés.
    - **Protection des jetons secrets** : les URLs de manifestes contenant des clés API privées (AIOStreams, Debrid) sont masquées dans l'interface et l'API (`host` seul exposé).
    - Installation en un clic des add-ons recommandés (Torrentio, CyberFlix, Anime Kisa, OpenSubtitles v3).

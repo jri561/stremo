@@ -296,4 +296,84 @@ export const api = {
     });
     return res.json();
   },
+  getTraktAuth: async (profileId: string): Promise<TraktAuthInfo | null> => {
+    const res = await fetch(`${API_BASE}/trakt/auth/${profileId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.auth || null;
+  },
+  saveTraktAuth: async (profileId: string, authData: { accessToken: string; username?: string; refreshToken?: string; expiresAt?: number }): Promise<TraktAuthInfo> => {
+    const res = await fetch(`${API_BASE}/trakt/auth/${profileId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(authData),
+    });
+    const data = await res.json();
+    return data.auth;
+  },
+  disconnectTrakt: async (profileId: string): Promise<void> => {
+    await fetch(`${API_BASE}/trakt/auth/${profileId}`, { method: 'DELETE' });
+  },
+  scrobbleTrakt: async (payload: {
+    profileId: string;
+    action: 'start' | 'pause' | 'stop';
+    progress: number;
+    media: {
+      title: string;
+      year?: string | number;
+      type: 'movie' | 'episode';
+      tmdbId?: string | number;
+      imdbId?: string;
+      season?: number;
+      episode?: number;
+    };
+  }): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/trakt/scrobble`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return !!data.success;
+    } catch {
+      return false;
+    }
+  },
+  exportBackup: async (): Promise<BackupData> => {
+    const res = await fetch(`${API_BASE}/backup/export`);
+    if (!res.ok) throw new Error("Échec de l'exportation de la sauvegarde");
+    return res.json();
+  },
+  importBackup: async (backupData: any): Promise<{ success: boolean; message: string }> => {
+    const res = await fetch(`${API_BASE}/backup/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backupData),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Échec de l'importation de la sauvegarde");
+    }
+    return data;
+  },
 };
+
+export interface TraktAuthInfo {
+  profileId: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  username?: string;
+  updatedAt?: string;
+}
+
+export interface BackupData {
+  version: string;
+  exportedAt: string;
+  profiles: Profile[];
+  addons: AddonInfo[];
+  library: LibraryItem[];
+  progress: WatchProgress[];
+  traktAuth?: TraktAuthInfo[];
+}

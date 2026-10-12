@@ -67,3 +67,78 @@ test('AddonClient Cinemeta catalog retrieval', async () => {
   assert.ok(movies.length > 0);
   assert.ok(movies[0].name.length > 0);
 });
+
+test('DatabaseManager Trakt.tv token storage and lifecycle', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test-trakt.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const profiles = db.getProfiles();
+  const profileId = profiles[0].id;
+
+  // Initially, no Trakt auth
+  assert.strictEqual(db.getTraktAuth(profileId), null);
+
+  // Save Trakt token
+  const auth = db.saveTraktAuth(profileId, 'secret_trakt_token_123', 'refresh_token_abc', 1791800000, 'cinephile');
+  assert.strictEqual(auth.profileId, profileId);
+  assert.strictEqual(auth.accessToken, 'secret_trakt_token_123');
+  assert.strictEqual(auth.username, 'cinephile');
+
+  // Retrieve Trakt auth
+  const fetched = db.getTraktAuth(profileId);
+  assert.notStrictEqual(fetched, null);
+  assert.strictEqual(fetched?.accessToken, 'secret_trakt_token_123');
+  assert.strictEqual(fetched?.username, 'cinephile');
+
+  // Disconnect Trakt
+  db.removeTraktAuth(profileId);
+  assert.strictEqual(db.getTraktAuth(profileId), null);
+
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
+test('DatabaseManager Backup export and import (merge and overwrite)', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test-backup.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const profiles = db.getProfiles();
+  const p1 = profiles[0].id;
+
+  // Add some data
+  db.addToLibrary(p1, 'tt0068646', 'movie', 'The Godfather');
+  db.saveWatchProgress({
+    profileId: p1,
+    mediaId: 'tt0068646',
+    mediaType: 'movie',
+    title: 'The Godfather',
+    currentTime: 3600,
+    duration: 10500,
+    completed: 0,
+  });
+
+  // Export data
+  const backup = db.exportData();
+  assert.strictEqual(backup.version, 1);
+  assert.ok(backup.profiles.length >= 3);
+  assert.strictEqual(backup.library.length, 1);
+  assert.strictEqual(backup.library[0].title, 'The Godfather');
+  assert.strictEqual(backup.progress.length, 1);
+  assert.strictEqual(backup.progress[0].currentTime, 3600);
+
+  // Test import in another database
+  const targetDbPath = path.join(process.cwd(), 'data', 'test-target.db');
+  if (fs.existsSync(targetDbPath)) fs.unlinkSync(targetDbPath);
+
+  const targetDb = new DatabaseManager(targetDbPath);
+  // Import with overwrite = false (merge)
+  const result = targetDb.importData(backup, false);
+  assert.strictEqual(result.success, true);
+  assert.ok(targetDb.isInLibrary(p1, 'tt0068646'));
+  assert.strictEqual(targetDb.getWatchProgressList(p1).length, 1);
+
+  // Clean up
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+  if (fs.existsSync(targetDbPath)) fs.unlinkSync(targetDbPath);
+});

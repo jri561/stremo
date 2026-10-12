@@ -45,6 +45,15 @@ export interface AddonConfig {
   orderIndex: number;
 }
 
+export interface TraktAuth {
+  profileId: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  username?: string;
+  updatedAt: string;
+}
+
 export class DatabaseManager {
   private db: DatabaseSync;
 
@@ -103,6 +112,15 @@ export class DatabaseManager {
         enabled INTEGER DEFAULT 1,
         orderIndex INTEGER DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS trakt_auth (
+        profileId TEXT PRIMARY KEY,
+        accessToken TEXT NOT NULL,
+        refreshToken TEXT,
+        expiresAt INTEGER,
+        username TEXT,
+        updatedAt TEXT NOT NULL
+      );
     `);
 
     // Add default profiles if none exist
@@ -139,14 +157,15 @@ export class DatabaseManager {
     return this.db.prepare('SELECT * FROM profiles WHERE id = ?').get(id) as unknown as Profile | undefined;
   }
 
-  createProfile(name: string, avatar: string, isKids = 0, pin?: string): Profile {
+  createProfile(name: string, avatar: string, isKids: number | boolean = 0, pin?: string): Profile {
     const id = 'p_' + Date.now();
     const createdAt = new Date().toISOString();
+    const isKidsNum = isKids ? 1 : 0;
     this.db.prepare(`
       INSERT INTO profiles (id, name, avatar, isKids, pin, createdAt)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, name, avatar, isKids ? 1 : 0, pin || null, createdAt);
-    return { id, name, avatar, isKids, pin, createdAt };
+    `).run(id, name, avatar, isKidsNum, pin || null, createdAt);
+    return { id, name, avatar, isKids: isKidsNum, pin, createdAt };
   }
 
   updateProfile(id: string, updates: { name?: string; avatar?: string; isKids?: number; pin?: string | null }): Profile | undefined {
@@ -263,5 +282,102 @@ export class DatabaseManager {
 
   removeAddon(id: string) {
     this.db.prepare('DELETE FROM addons WHERE id = ?').run(id);
+  }
+
+  // --- Trakt Authentication ---
+  getTraktAuth(profileId: string): TraktAuth | null {
+    const row = this.db.prepare('SELECT * FROM trakt_auth WHERE profileId = ?').get(profileId);
+    return (row as unknown as TraktAuth) || null;
+  }
+
+  saveTraktAuth(profileId: string, accessToken: string, refreshToken?: string, expiresAt?: number, username?: string): TraktAuth {
+    const updatedAt = new Date().toISOString();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO trakt_auth (profileId, accessToken, refreshToken, expiresAt, username, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(profileId, accessToken, refreshToken || null, expiresAt || null, username || null, updatedAt);
+    return this.getTraktAuth(profileId)!;
+  }
+
+  removeTraktAuth(profileId: string) {
+    this.db.prepare('DELETE FROM trakt_auth WHERE profileId = ?').run(profileId);
+  }
+
+  // --- Backup & Multi-Device Sync ---
+  exportData(): { version: number; exportedAt: string; profiles: Profile[]; addons: AddonConfig[]; library: LibraryItem[]; progress: WatchProgress[] } {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      profiles: this.getProfiles(),
+      addons: this.getAddons(),
+      library: this.db.prepare('SELECT * FROM library').all() as unknown as LibraryItem[],
+      progress: this.db.prepare('SELECT * FROM watch_progress').all() as unknown as WatchProgress[],
+    };
+  }
+
+  importData(
+    data: { profiles?: Profile[]; addons?: AddonConfig[]; library?: LibraryItem[]; progress?: WatchProgress[] },
+    overwrite = false
+  ): { success: boolean; importedProfiles: number; importedAddons: number; importedLibrary: number; importedProgress: number } {
+    if (overwrite) {
+      this.db.prepare('DELETE FROM library').run();
+      this.db.prepare('DELETE FROM watch_progress').run();
+    }
+
+    let importedProfiles = 0;
+    let importedAddons = 0;
+    let importedLibrary = 0;
+    let importedProgress = 0;
+
+    if (Array.isArray(data.profiles)) {
+      for (const p of data.profiles) {
+        if (!p.id || !p.name) continue;
+        const exists = this.getProfile(p.id);
+        if (!exists) {
+          this.createProfile(p.name, p.avatar || 'user', p.isKids === 1, p.pin);
+        } else {
+          this.updateProfile(p.id, { name: p.name, avatar: p.avatar, isKids: p.isKids, pin: p.pin });
+        }
+        importedProfiles++;
+      }
+    }
+
+    if (Array.isArray(data.addons)) {
+      for (const a of data.addons) {
+        if (!a.id || !a.url) continue;
+        this.addAddon(a.id, a.name, a.url);
+        importedAddons++;
+      }
+    }
+
+    if (Array.isArray(data.library)) {
+      for (const l of data.library) {
+        if (!l.profileId || !l.mediaId) continue;
+        const genres = typeof l.genres === 'string' ? JSON.parse(l.genres || '[]') : l.genres;
+        this.addToLibrary(l.profileId, l.mediaId, l.mediaType, l.title, l.poster, l.year, genres);
+        importedLibrary++;
+      }
+    }
+
+    if (Array.isArray(data.progress)) {
+      for (const pr of data.progress) {
+        if (!pr.profileId || !pr.mediaId) continue;
+        this.saveWatchProgress({
+          profileId: pr.profileId,
+          mediaId: pr.mediaId,
+          mediaType: pr.mediaType || 'movie',
+          title: pr.title || 'Inconnu',
+          poster: pr.poster,
+          season: pr.season,
+          episode: pr.episode,
+          currentTime: pr.currentTime || 0,
+          duration: pr.duration || 0,
+          completed: pr.completed || 0,
+        });
+        importedProgress++;
+      }
+    }
+
+    return { success: true, importedProfiles, importedAddons, importedLibrary, importedProgress };
   }
 }

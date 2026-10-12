@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Lock,
   Download,
+  Database,
 } from 'lucide-react';
 import { api, accessKey, isKidsSafeItem } from './api';
 import type {
@@ -33,6 +34,8 @@ import { VideoPlayer } from './components/VideoPlayer';
 import { SkeletonRow } from './components/SkeletonRow';
 import { SearchView } from './components/SearchView';
 import { DiscoverView } from './components/DiscoverView';
+import { BackupModal } from './components/BackupModal';
+import { TraktModal } from './components/TraktModal';
 import type { PlayerChoice } from './players';
 import { rankStreams } from './streams';
 
@@ -71,6 +74,8 @@ export function App() {
   const [subtitles, setSubtitles] = useState<any[]>([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [showAddonsModal, setShowAddonsModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showTraktModal, setShowTraktModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authKeyInput, setAuthKeyInput] = useState('');
   const [selectedVideoId, setSelectedVideoId] = useState<string | undefined>(undefined);
@@ -622,6 +627,13 @@ export function App() {
             </button>
           )}
           <button
+            onClick={() => setShowBackupModal(true)}
+            className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
+            title="Sauvegarde & Multi-écrans"
+          >
+            <Database className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setShowAddonsModal(true)}
             className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
             title="Add-ons Stremio"
@@ -712,6 +724,8 @@ export function App() {
               onCreateProfile={handleCreateProfile}
               onUpdateProfile={handleUpdateProfile}
               onOpenSelector={() => setActiveProfile(null)}
+              onOpenTrakt={() => setShowTraktModal(true)}
+              onOpenBackup={() => setShowBackupModal(true)}
             />
           </div>
         </header>
@@ -1114,6 +1128,20 @@ export function App() {
           }
           subtitles={subtitles}
           nextEpisode={nextEpisode}
+          profileId={activeProfile?.id}
+          mediaInfo={
+            selectedItem
+              ? {
+                  title: selectedItem.name,
+                  year: selectedItem.year,
+                  type: selectedItem.type === 'series' ? 'episode' : 'movie',
+                  season: metaDetail?.videos?.find((v) => v.id === selectedVideoId)?.season,
+                  episode: metaDetail?.videos?.find((v) => v.id === selectedVideoId)?.episode,
+                  imdbId: selectedItem.id?.startsWith('tt') ? selectedItem.id : undefined,
+                  tmdbId: selectedItem.id?.startsWith('tmdb:') ? selectedItem.id.replace('tmdb:', '') : undefined,
+                }
+              : undefined
+          }
           onPlayNextEpisode={handlePlayNextEpisode}
           onProgress={(curr, dur) => {
             if (activeProfile && selectedItem) {
@@ -1136,6 +1164,29 @@ export function App() {
               api.playExternal(activePlayerStream.url, selectedItem.name, undefined, 'vlc');
             }
           }}
+        />
+      )}
+
+      {/* Modale Sauvegarde & Synchronisation */}
+      {showBackupModal && (
+        <BackupModal
+          onClose={() => setShowBackupModal(false)}
+          onDataRestored={() => {
+            loadProfiles();
+            loadAddons();
+            if (activeProfile) {
+              loadProfileData(activeProfile.id);
+            }
+          }}
+        />
+      )}
+
+      {/* Modale Scrobble Trakt.tv */}
+      {showTraktModal && activeProfile && (
+        <TraktModal
+          profileId={activeProfile.id}
+          profileName={activeProfile.name}
+          onClose={() => setShowTraktModal(false)}
         />
       )}
     </div>

@@ -56,7 +56,11 @@ La plupart des applications de streaming communautaires existantes souffrent de 
   - **Recherche filmographique au clic** : cliquer sur un acteur ou un réalisateur ouvre directement sa filmographie dans l'onglet de recherche.
 - **Bande-annonce Officielle** : lecteur YouTube intégré sans quitter l'application.
 
-### ⚡ C. Lecteur Vidéo Next-Gen & Binge-Watching (VideoPlayer)
+### ⚡ C. Lecteur Vidéo Next-Gen, Diffusion & Binge-Watching (VideoPlayer)
+- **Google Cast & Apple AirPlay Intégrés** :
+  - Diffusion en un clic sur TV de salon, Chromecast et récepteurs AirPlay via les API standard W3C Remote Playback et Apple WebKit.
+- **Téléchargement Hors-Ligne Direct** :
+  - Bouton de téléchargement 1-clic sur chaque flux direct HTTP / Debrid pour emporter ses films et séries hors connexion.
 - **Saut du Générique de Fin (Outro / Credits Skip)** :
   - Détection automatique dès l'entrée dans le générique de fin (seuil configurable : 90s, 75s, 45s, 20s avant la fin).
   - Bandeau élégant « Générique de fin détecté • Épisode suivant » avec compte à rebours 10s et bouton de saut immédiat (`Touche N`).
@@ -81,11 +85,21 @@ La plupart des applications de streaming communautaires existantes souffrent de 
 - **Contrôle Parental par Code PIN** : verrouillage instantané interdisant le passage d'un profil enfant à un profil adulte sans le PIN correct.
 - **Isolation totale** en base SQLite des historiques, temps de visionnage et favoris entre chaque membre du foyer.
 
-### 📦 E. Infrastructure, PWA & Add-ons
+### 🌐 E. Trakt.tv & Synchronisation Multi-Écrans
+- **Scrobbler Trakt.tv Bidirectionnel** :
+  - Association de jeton d'accès personnel Trakt par profil.
+  - Scrobble automatique en direct lors de la lecture (`start`), de la pause (`pause`) et de la fin de vidéo (`stop` avec historique marqué « Vu » dès 80%).
+  - Proxy backend sécurisé `/api/trakt/scrobble` avec en-têtes officiels Trakt v2.
+- **Sauvegarde & Migration Multi-Écrans (Export / Import 1-Clic)** :
+  - Exportation complète en un clic (profils, add-ons, favoris, historique de lecture).
+  - Téléchargement au format JSON et copie directe dans le presse-papier.
+  - Restauration multi-écrans avec modes **Fusion intelligente** et **Écrasement complet**.
+
+### 📦 F. Infrastructure, PWA & Add-ons
 - **Progressive Web App (PWA)** : Web App Manifest, Service Worker et installation en 1 clic sur Android, iOS, Windows et Mac.
 - **Navigation Télécommande / Clavier (D-Pad)** : focus rings indigo haute visibilité pour usage sur Smart TV et box de salon.
 - **Gestionnaire d'Add-ons Sécurisé** : masquage des jetons secrets d'API dans les URLs d'add-ons (`token masking`).
-- **Suite de tests automatisés** : 11 tests unitaires et d'intégration validant le comportement de bout en bout (`npm test`).
+- **Suite de tests automatisés** : 13 tests unitaires et d'intégration validant le comportement de bout en bout (`npm test`, 100% au vert).
 
 ---
 
@@ -95,18 +109,21 @@ Le développement futur de Stremo s'articule en 3 phases progressives et pragmat
 
 ```mermaid
 flowchart LR
-    A["Phase 1 : Synchronisation & Cloud"] --> B["Phase 2 : Écosystème Salon & TV"]
+    A["Phase 1 : Trakt & Sync Multi-Écrans (Terminé ✓)"] --> B["Phase 2 : Écosystème Salon & TV"]
     B --> C["Phase 3 : Haute Performance & P2P"]
 ```
 
-### 📍 Phase 1 : Synchronisation Externe & Comptes Cloud (Court Terme)
+### 📍 Phase 1 : Synchronisation Externe & Continuité Multi-Écrans (Terminé ✓)
 1. **Intégration Trakt.tv Bidirectionnelle** :
-   - Synchronisation automatique de l'historique de visionnage (scrobbling en temps réel).
-   - Récupération des listes personnelles, watchlists et historiques existants depuis Trakt.
-2. **Synchronisation Multi-Appareils Cloud / P2P** :
-   - Sauvegarde et synchronisation chiffrée des profils et favoris entre plusieurs appareils du foyer via une clé de sync légère.
-3. **Téléchargements Locaux (Mode Hors-Ligne)** :
-   - Mise en cache locale des épisodes sur smartphone ou ordinateur portable pour visionnage en voyage sans connexion Internet.
+   - ✅ Scrobble en temps réel (start/pause/stop) et marquage automatique des épisodes et films vus.
+   - ✅ Gestion sécurisée des jetons par profil utilisateur.
+2. **Synchronisation Multi-Appareils (Sauvegarde 1-Clic)** :
+   - ✅ Export JSON et presse-papier pour transfert instantané PC / Mobile / Android TV.
+   - ✅ Restauration en mode fusion intelligente ou écrasement.
+3. **Diffusion Google Cast & Apple AirPlay** :
+   - ✅ Bouton de diffusion intégré dans le lecteur vidéo.
+4. **Téléchargements Locaux Hors-Ligne** :
+   - ✅ Téléchargement direct 1-clic pour les flux Debrid et HTTP.
 4. **Base Communautaire de Chapitrage (AniSkip / TheTVDB Chaptering)** :
    - Détection des génériques basée sur les timecodes exacts vérifiés par la communauté pour un saut d'intro/outro au millième de seconde près.
 

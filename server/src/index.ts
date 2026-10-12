@@ -195,6 +195,97 @@ app.delete('/api/addons/:id', (req, res) => {
   }
 });
 
+// --- TRAKT.TV SCROBBLER & SYNC ---
+app.get('/api/trakt/auth/:profileId', (req, res) => {
+  try {
+    const auth = db.getTraktAuth(req.params.profileId);
+    res.json({ success: true, connected: !!auth, username: auth?.username || null });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/trakt/auth/:profileId', (req, res) => {
+  try {
+    const { accessToken, refreshToken, expiresAt, username } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Token manquant' });
+    db.saveTraktAuth(req.params.profileId, accessToken, refreshToken, expiresAt, username);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/trakt/auth/:profileId', (req, res) => {
+  try {
+    db.removeTraktAuth(req.params.profileId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/trakt/scrobble', async (req, res) => {
+  try {
+    const { profileId, action, mediaType, title, year, imdbId, season, episode, progress } = req.body;
+    const auth = profileId ? db.getTraktAuth(profileId) : undefined;
+    if (!auth || !auth.accessToken) {
+      return res.json({ success: true, scrobbled: false, reason: 'Non connecté à Trakt' });
+    }
+
+    const traktEndpoint = action === 'start' ? 'start' : action === 'pause' ? 'pause' : 'stop';
+    const payload: any = {
+      progress: Math.min(100, Math.max(0, Number(progress) || 0)),
+    };
+
+    if (mediaType === 'series') {
+      payload.show = { title, ids: imdbId ? { imdb: imdbId } : undefined };
+      payload.episode = { season: Number(season) || 1, number: Number(episode) || 1 };
+    } else {
+      payload.movie = { title, year: Number(year) || undefined, ids: imdbId ? { imdb: imdbId } : undefined };
+    }
+
+    const traktRes = await fetch(`https://api.trakt.tv/scrobble/${traktEndpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'trakt-api-version': '2',
+        'trakt-api-key': process.env.TRAKT_CLIENT_ID || 'd65e7514a04d3c32bb3f9df089aef411cb3a893cb9988b43343bb92b512e0f49',
+        'Authorization': `Bearer ${auth.accessToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const traktData = await traktRes.json().catch(() => ({}));
+    res.json({ success: traktRes.ok, scrobbled: traktRes.ok, traktResponse: traktData });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- BACKUP & EXPORT/IMPORT ---
+app.get('/api/backup/export', (req, res) => {
+  try {
+    const backup = db.exportData();
+    res.json({ success: true, backup });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/backup/import', (req, res) => {
+  try {
+    const { backup } = req.body;
+    if (!backup || typeof backup !== 'object') {
+      return res.status(400).json({ success: false, error: 'Données de sauvegarde invalides' });
+    }
+    const result = db.importData(backup);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- STREMIO PROXY & AGGREGATION ---
 // 1. Catalogs (tous les add-ons et catalogues en parallèle)
 app.get('/api/catalogs', async (req, res) => {

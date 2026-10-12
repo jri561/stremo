@@ -19,7 +19,9 @@ import {
   PictureInPicture2,
   Sliders,
   FastForward,
+  Cast,
 } from 'lucide-react';
+import { api } from '../api';
 import { getAndroidIntentUrl } from '../players';
 import { isOutroCreditsDetected } from '../streams';
 
@@ -30,12 +32,24 @@ export interface NextEpisodeInfo {
   title: string;
 }
 
+export interface TraktMediaInfo {
+  title: string;
+  year?: string | number;
+  type: 'movie' | 'episode';
+  season?: number;
+  episode?: number;
+  tmdbId?: string | number;
+  imdbId?: string;
+}
+
 interface Props {
   streamUrl: string;
   title: string;
   subtitles?: { id: string; lang: string; url: string; addonName?: string }[];
   initialTime?: number;
   nextEpisode?: NextEpisodeInfo | null;
+  profileId?: string;
+  mediaInfo?: TraktMediaInfo;
   onProgress?: (currentTime: number, duration: number) => void;
   onClose: () => void;
   onLaunchVLC?: () => void;
@@ -48,6 +62,8 @@ export const VideoPlayer: React.FC<Props> = ({
   subtitles = [],
   initialTime = 0,
   nextEpisode,
+  profileId,
+  mediaInfo,
   onProgress,
   onClose,
   onLaunchVLC,
@@ -236,6 +252,68 @@ export const VideoPlayer: React.FC<Props> = ({
       }
     }
   };
+
+  // Google Cast / AirPlay
+  const handleCast = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    try {
+      // 1. Remote Playback API standard (Google Cast sur Chrome, Edge & Android)
+      if ('remote' in video && (video as any).remote && typeof (video as any).remote.prompt === 'function') {
+        await (video as any).remote.prompt();
+        return;
+      }
+
+      // 2. AirPlay Apple standard (Safari sur macOS, iPhone & iPad)
+      if ('webkitShowPlaybackTargetPicker' in video && typeof (video as any).webkitShowPlaybackTargetPicker === 'function') {
+        (video as any).webkitShowPlaybackTargetPicker();
+        return;
+      }
+
+      setSkipToast("Diffuser : utilisez l'option 'Caster' de Chrome ou lancez dans VLC");
+      setTimeout(() => setSkipToast(null), 3000);
+    } catch (err) {
+      console.warn('Cast error:', err);
+    }
+  };
+
+  // Trakt.tv Scrobbler automatique
+  const lastScrobbleRef = useRef<{ action: string; time: number }>({ action: '', time: 0 });
+
+  const triggerTraktScrobble = (action: 'start' | 'pause' | 'stop', force = false) => {
+    if (!profileId || !mediaInfo || !videoRef.current) return;
+    const curr = videoRef.current.currentTime || 0;
+    const dur = videoRef.current.duration || 1;
+    const progress = Math.min(100, Math.max(0, Math.round((curr / dur) * 100)));
+
+    const now = Date.now();
+    if (!force && lastScrobbleRef.current.action === action && now - lastScrobbleRef.current.time < 5000) {
+      return;
+    }
+
+    lastScrobbleRef.current = { action, time: now };
+    api.scrobbleTrakt({
+      profileId,
+      action,
+      progress,
+      media: mediaInfo,
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (isPlaying) {
+      triggerTraktScrobble('start');
+    } else if (currentTime > 0) {
+      triggerTraktScrobble('pause');
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    return () => {
+      triggerTraktScrobble('stop', true);
+    };
+  }, []);
 
   const togglePiP = async () => {
     try {
@@ -888,6 +966,15 @@ export const VideoPlayer: React.FC<Props> = ({
                   )}
                 </div>
               )}
+
+              {/* Google Cast / AirPlay */}
+              <button
+                onClick={handleCast}
+                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                title="Diffuser sur TV (Google Cast / AirPlay)"
+              >
+                <Cast className="w-4 h-4 text-slate-300 hover:text-indigo-400" />
+              </button>
 
               {/* Native Picture-in-Picture */}
               <button

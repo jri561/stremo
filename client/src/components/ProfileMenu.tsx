@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil } from 'lucide-react';
+import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database } from 'lucide-react';
 import type { Profile } from '../api';
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
   onCreateProfile: (name: string, avatar: string, isKids: boolean, pin?: string) => Promise<void>;
   onUpdateProfile?: (id: string, updates: { name: string; avatar: string; isKids: boolean; pin?: string | null }) => Promise<void>;
   onOpenSelector: () => void;
+  onOpenTrakt?: () => void;
+  onOpenBackup?: () => void;
 }
 
 export const ProfileMenu: React.FC<Props> = ({
@@ -19,6 +21,8 @@ export const ProfileMenu: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onOpenSelector,
+  onOpenTrakt,
+  onOpenBackup,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -144,6 +148,32 @@ export const ProfileMenu: React.FC<Props> = ({
           ))}
 
           <div className="pt-2 border-t border-white/5 space-y-1">
+            {onOpenTrakt && (
+              <button
+                onClick={() => {
+                  onOpenTrakt();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-red-300 hover:text-white hover:bg-red-500/10 flex items-center gap-2 transition cursor-pointer"
+              >
+                <Tv className="w-4 h-4 text-red-400" />
+                Scrobble Trakt.tv
+              </button>
+            )}
+
+            {onOpenBackup && (
+              <button
+                onClick={() => {
+                  onOpenBackup();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-white/5 flex items-center gap-2 transition cursor-pointer"
+              >
+                <Database className="w-4 h-4 text-indigo-400" />
+                Sauvegarde & Multi-écrans
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setShowCreateModal(true);
