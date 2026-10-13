@@ -111,6 +111,7 @@ export const VideoPlayer: React.FC<Props> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1159,6 +1160,36 @@ export const VideoPlayer: React.FC<Props> = ({
     videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + seconds));
   };
 
+  // Double-tap tactile mobile (avance/recul rapide fluide)
+  const handleVideoTouchEnd = (e: React.TouchEvent<HTMLVideoElement>) => {
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const now = Date.now();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRatio = (touch.clientX - rect.left) / rect.width;
+
+    if (lastTapRef.current && now - lastTapRef.current.time < 350) {
+      const deltaX = Math.abs(touch.clientX - lastTapRef.current.x);
+      const deltaY = Math.abs(touch.clientY - lastTapRef.current.y);
+      if (deltaX < 70 && deltaY < 70) {
+        if (xRatio < 0.38) {
+          e.preventDefault();
+          skip(-10);
+          triggerOSD('-10s', '⏪');
+          lastTapRef.current = null;
+          return;
+        } else if (xRatio > 0.62) {
+          e.preventDefault();
+          skip(10);
+          triggerOSD('+10s', '⏩');
+          lastTapRef.current = null;
+          return;
+        }
+      }
+    }
+    lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -1311,6 +1342,7 @@ export const VideoPlayer: React.FC<Props> = ({
           filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`,
         }}
         onClick={togglePlay}
+        onTouchEnd={handleVideoTouchEnd}
         crossOrigin="anonymous"
         playsInline
       >
@@ -1637,16 +1669,18 @@ export const VideoPlayer: React.FC<Props> = ({
 
               <button
                 onClick={() => skip(-10)}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Reculer de 10s"
+                aria-label="Reculer de 10 secondes"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
 
               <button
                 onClick={() => skip(10)}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Avancer de 10s"
+                aria-label="Avancer de 10 secondes"
               >
                 <RotateCw className="w-4 h-4" />
               </button>
@@ -1658,8 +1692,9 @@ export const VideoPlayer: React.FC<Props> = ({
                     setIsMuted(!isMuted);
                   }
                 }}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title={isMuted ? 'Activer le son (M)' : 'Couper le son (M)'}
+                aria-label={isMuted ? 'Activer le son' : 'Couper le son'}
               >
                 {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
               </button>
@@ -2911,20 +2946,21 @@ export const VideoPlayer: React.FC<Props> = ({
                 <PictureInPicture2 className="w-4 h-4" />
               </button>
 
-              {/* Menu Plus d'options (Mobile uniquement) */}
-              <div className="relative sm:hidden">
+              {/* Menu Plus d'options (Mobile et tablette) */}
+              <div className="relative md:hidden">
                 <button
                   onClick={() => {
                     const next = !showMoreMobileMenu;
                     closeAllMenus();
                     setShowMoreMobileMenu(next);
                   }}
-                  className={`p-2 rounded-xl transition cursor-pointer flex items-center justify-center ${
+                  className={`w-10 h-10 sm:w-9 sm:h-9 rounded-xl transition cursor-pointer flex items-center justify-center ${
                     showMoreMobileMenu
                       ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
                       : 'text-slate-300 hover:text-white hover:bg-white/10'
                   }`}
                   title="Plus d'options"
+                  aria-label="Plus d'options de lecture"
                 >
                   <MoreHorizontal className="w-4 h-4" />
                 </button>
@@ -3113,8 +3149,9 @@ export const VideoPlayer: React.FC<Props> = ({
               {/* Fullscreen */}
               <button
                 onClick={toggleFullscreen}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Plein écran (F)"
+                aria-label={isFullscreen ? 'Quitter le plein écran' : 'Passer en plein écran'}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>

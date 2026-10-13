@@ -1,0 +1,21 @@
+{
+  "appId": "com.stremo.app",
+  "appName": "Stremo",
+  "webDir": "client/dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "backgroundColor": "#07090e",
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#07090e"
+    }
+  }
+}

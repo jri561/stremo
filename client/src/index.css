@@ -80,6 +80,16 @@ html, body {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   z-index: 30;
 }
+.tv-mode-active .text-\[10px\],
+.tv-mode-active .text-\[11px\] {
+  font-size: 0.82rem !important;
+}
+
+/* Safe area mobile Android / iOS (barres de navigation et encoches) */
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0.75rem));
+}
+
 
 /* Subtle fade in for views */
 @keyframes fadeInView {

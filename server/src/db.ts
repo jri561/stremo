@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { randomInt } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { hashPassword, verifyPassword, generateSessionToken } from './accountAuth.js';
@@ -353,7 +354,8 @@ export class DatabaseManager {
   ): Profile | undefined {
     const existing = this.getProfile(id);
     if (!existing) return undefined;
-    if (accountId !== undefined && existing.accountId !== (accountId || null)) {
+    const callerAccountId = accountId || null;
+    if (existing.accountId !== null && existing.accountId !== callerAccountId) {
       return undefined;
     }
 
@@ -378,7 +380,8 @@ export class DatabaseManager {
   deleteProfile(id: string, accountId?: string | null) {
     const existing = this.getProfile(id);
     if (!existing) return;
-    if (accountId !== undefined && existing.accountId !== (accountId || null)) {
+    const callerAccountId = accountId || null;
+    if (existing.accountId !== null && existing.accountId !== callerAccountId) {
       return;
     }
     this.db.prepare('DELETE FROM watch_progress WHERE profileId = ?').run(id);
@@ -781,7 +784,7 @@ export class DatabaseManager {
     const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
     let code = '';
     for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      code += chars.charAt(randomInt(0, chars.length));
     }
 
     const now = Date.now();

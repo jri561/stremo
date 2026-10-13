@@ -3,17 +3,53 @@
   "short_name": "Stremo",
   "description": "Stremo regroupe vos catalogues, favoris, historique familial et lecteurs vidéo en une expérience fluide.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#07090e",
   "theme_color": "#07090e",
   "orientation": "any",
-  "categories": ["entertainment", "multimedia", "movies"],
+  "categories": ["entertainment", "multimedia", "movies", "video"],
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Films",
+      "short_name": "Films",
+      "description": "Accéder directement au catalogue des films",
+      "url": "/?type=movie",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Séries",
+      "short_name": "Séries",
+      "description": "Accéder directement au catalogue des séries",
+      "url": "/?type=series",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

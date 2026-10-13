@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Stremo</string>
+    <string name="title_activity_main">Stremo</string>
+    <string name="package_name">com.stremo.app</string>
+    <string name="custom_url_scheme">stremo</string>
+</resources>

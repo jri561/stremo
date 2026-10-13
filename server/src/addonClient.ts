@@ -275,6 +275,10 @@ export function isPublicHttpUrl(url: unknown, blockPrivateRanges = false): url i
     if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0' || host === '::' || host === '::1') return false;
     if (/^127\./.test(host) || /^169\.254\./.test(host) || /^0\./.test(host)) return false;
     if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe80:/.test(host)) return false;
+    // Rejet des entiers bruts ou représentations hexadécimales (ex: 0x7f000001 ou 2130706433)
+    if (/^0x[0-9a-f]+/i.test(host) || /^\d+$/.test(host)) return false;
+    // Rejet des noms de domaines de rebinding public pointant vers localhost ou link-local
+    if (/(^|\.)(nip|sslip)\.io$/.test(host) || host.includes('127.0.0.1') || host.includes('169.254.')) return false;
     if (blockPrivateRanges && isPrivateIp(host)) return false;
     return true;
   } catch {

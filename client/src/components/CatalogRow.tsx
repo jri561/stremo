@@ -54,6 +54,12 @@ export const CatalogRow: React.FC<Props> = ({
           prev.focus();
           prev.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
+      } else if (index === 0) {
+        const sidebarTarget = document.querySelector('aside button:not([disabled]), aside a') as HTMLElement;
+        if (sidebarTarget) {
+          e.preventDefault();
+          sidebarTarget.focus();
+        }
       }
     } else if (e.key === 'ArrowDown') {
       const currentSection = e.currentTarget.closest('section');
@@ -72,6 +78,14 @@ export const CatalogRow: React.FC<Props> = ({
         e.preventDefault();
         targetCard.focus();
         targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        const topTarget = (document.querySelector('[data-tv-hero-action="true"]') ||
+          document.querySelector('header input, header button')) as HTMLElement;
+        if (topTarget) {
+          e.preventDefault();
+          topTarget.focus();
+          topTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
     }
   };
@@ -155,7 +169,8 @@ export const CatalogRow: React.FC<Props> = ({
                 onClick={() => onSelectItem(item)}
                 onKeyDown={(e) => handleKeyDown(e, item, index)}
                 tabIndex={0}
-                role="button"
+                role="group"
+                aria-label={item.name}
                 className="flex-shrink-0 w-32 sm:w-38 md:w-44 group/card cursor-pointer space-y-1.5 snap-start focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07090e] rounded-xl transition duration-150"
               >
                 {/* Affiche */}
@@ -192,12 +207,14 @@ export const CatalogRow: React.FC<Props> = ({
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/card:opacity-100 transition-opacity duration-200 flex items-center justify-center pointer-events-none">
                     <button
                       type="button"
+                      tabIndex={-1}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (onQuickPlay) onQuickPlay(item);
                         else onSelectItem(item);
                       }}
                       title={`Lecture rapide de ${item.name}`}
+                      aria-label={`Lecture rapide de ${item.name}`}
                       className="pointer-events-auto w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-lg shadow-black/50 transform scale-90 group-hover/card:scale-100 hover:scale-110 active:scale-95 transition duration-200 backdrop-blur-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white"
                     >
                       <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current ml-0.5" />

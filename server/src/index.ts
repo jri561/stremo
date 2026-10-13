@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { DatabaseManager } from './db.js';
-import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster, buildMagnet } from './addonClient.js';
+import { AddonClient, maskAddonUrl, isSafePlayableUrl, isPublicHttpUrl, normalizePoster, buildMagnet } from './addonClient.js';
 import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
 import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
 import { torrentEngine } from './torrentEngine.js';
@@ -269,7 +269,9 @@ app.post('/api/addons', async (req, res) => {
   try {
     const { accountId } = getAccountFromReq(req);
     const { url } = req.body;
-    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return res.status(400).json({ error: 'URL http(s) requise' });
+    if (typeof url !== 'string' || !isPublicHttpUrl(url, true)) {
+      return res.status(400).json({ error: 'URL http(s) publique requise (adresses locales et privées interdites)' });
+    }
     const client = new AddonClient(url, db);
     const manifest = await client.getManifest();
     db.addAddon(manifest.id, manifest.name, url, accountId);

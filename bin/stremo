@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Stremo Linux Launcher
+# Lance le backend Stremo et l'interface applicative native
+
+set -e
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$DIR"
+
+echo "🎬 Démarrage de Stremo..."
+exec node scripts/launch-desktop.mjs "$@"

@@ -265,21 +265,21 @@ Pour que l'expérience soit 100% fluide pour des utilisateurs non-techniques :
 
 ---
 
-## 📱 Déploiement & Accès Distant
+### Support Multi-Plateformes Dédié (Android, Android TV, Linux, Web)
 
-### Cloudflare Tunnel (Accès distant sécurisé)
-Pour exposer l'application sur smartphone ou tablette en dehors du domicile :
-```bash
-cloudflared tunnel --url http://localhost:3001
-```
-*Astuce : Définissez `STREMO_ACCESS_KEY` dans `server/.env` pour protéger l'accès public avec un code secret.*
+Stremo dispose d'une configuration clé en main pour chaque écran. Consultez le guide complet : [DEPLOY_PLATFORMS.md](file:///home/toto/Documents/stremo/DEPLOY_PLATFORMS.md).
 
-### Application Mobile / Android TV (Capacitor)
-```bash
-cd client
-npm run build
-npx cap init Stremo com.stremo.app --web-dir dist
-npx cap add android
-npx cap open android
-```
-Dans Android Studio, compilez l'APK pour Android TV ou mobile.
+- **📺 Android TV & Box Salon (Expérience 10-pieds)** :
+  - Support Leanback dans [android/app/src/main/AndroidManifest.xml](file:///home/toto/Documents/stremo/android/app/src/main/AndroidManifest.xml).
+  - Navigation spatiale D-Pad (télécommande ▲▼◄►, OK, Retour).
+  - Détection automatique et bascule via touche `T`.
+- **📱 Android (Smartphones & Tablettes)** :
+  - PWA installable avec icônes maskables et raccourcis.
+  - Double-tap rapide tactile (±10s) dans le lecteur vidéo.
+  - Configuration Capacitor native dans [capacitor.config.json](file:///home/toto/Documents/stremo/capacitor.config.json) et TWA dans [android/twa-manifest.json](file:///home/toto/Documents/stremo/android/twa-manifest.json).
+- **🐧 Linux (Bureau & Salon)** :
+  - Installation en une commande : `./scripts/install-linux.sh`.
+  - Exécutable binaire : `stremo` ou `./bin/stremo`.
+  - Packaging d'archive portable : `./scripts/package-linux.sh`.
+  - Intégration de bureau XDG : [stremo.desktop](file:///home/toto/Documents/stremo/stremo.desktop).
+

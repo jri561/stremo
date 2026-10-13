@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Play,
   Plus,
@@ -103,10 +103,28 @@ export const MediaModal: React.FC<Props> = ({
     setTimeout(() => setDownloadToast(null), 3500);
   };
 
-  // Empêcher le défilement de l'arrière-plan et gérer la touche Échap
+  const primaryActionRef = useRef<HTMLButtonElement | null>(null);
+
+  // Autofocus au montage pour navigation télécommande TV
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      primaryActionRef.current?.focus();
+    }, 60);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Empêcher le défilement de l'arrière-plan et gérer les touches Échap / Retour TV
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'Backspace') {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+          e.preventDefault();
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     const originalOverflow = document.body.style.overflow;

@@ -79,7 +79,7 @@ export async function proxySubtitle(req: Request, res: Response): Promise<void> 
 
   const urlOk = isTunnel
     ? isPublicHttpUrl(targetUrl, true)
-    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:');
+    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:') && !targetUrl.includes('169.254.');
 
   if (!targetUrl || !urlOk) {
     res.status(400).json({ success: false, error: 'URL de sous-titre invalide ou interdite' });
@@ -130,9 +130,10 @@ export async function proxyStream(req: Request, res: Response): Promise<void> {
   const isTunnel = isTunnelRequest(req.headers);
 
   // Depuis un tunnel public, les cibles locales et privées sont refusées (anti-SSRF)
+  // En local, autorise les flux internes légitimes (torrent local) tout en bloquant les métadonnées cloud
   const urlOk = isTunnel
     ? isPublicHttpUrl(targetUrl, true)
-    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:');
+    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:') && !targetUrl.includes('169.254.');
 
   if (!targetUrl || !urlOk) {
     res.status(400).json({ success: false, error: 'URL vidéo http(s) requise' });
