@@ -14,6 +14,18 @@ export interface Profile {
   createdAt: string;
 }
 
+export interface ProfileStats {
+  totalWatchTimeSeconds: number;
+  totalWatchTimeFormatted: string;
+  moviesWatchedCount: number;
+  episodesWatchedCount: number;
+  totalItemsCount: number;
+  libraryItemsCount: number;
+  completionRatePercent: number;
+  topGenres: Array<{ genre: string; count: number }>;
+  favoriteSeries?: { title: string; episodesWatched: number };
+}
+
 export interface WatchProgress {
   profileId: string;
   mediaId: string; // e.g. tt1234567 or tt1234567:1:1
@@ -303,6 +315,82 @@ export class DatabaseManager {
 
   deleteWatchProgress(profileId: string, mediaId: string) {
     this.db.prepare('DELETE FROM watch_progress WHERE profileId = ? AND mediaId = ?').run(profileId, mediaId);
+  }
+
+  getProfileStats(profileId: string): ProfileStats {
+    const progressItems = this.getWatchProgressList(profileId);
+    const libraryItems = this.getLibrary(profileId);
+
+    let totalWatchSeconds = 0;
+    let moviesCount = 0;
+    let episodesCount = 0;
+    const seriesWatchMap: Record<string, { title: string; count: number }> = {};
+
+    for (const p of progressItems) {
+      const watched = p.completed === 1 && p.duration > 0 ? p.duration : p.currentTime;
+      totalWatchSeconds += Math.max(0, watched);
+
+      const isFinished = p.completed === 1 || (p.duration > 0 && p.currentTime / p.duration >= 0.8);
+      if (p.mediaType === 'movie') {
+        if (isFinished) moviesCount++;
+      } else if (p.mediaType === 'series') {
+        if (isFinished) episodesCount++;
+        const seriesKey = p.title.replace(/\s*-\s*s\d+e\d+/i, '').replace(/\s*s\d+e\d+/i, '').trim();
+        if (!seriesWatchMap[seriesKey]) {
+          seriesWatchMap[seriesKey] = { title: seriesKey, count: 0 };
+        }
+        seriesWatchMap[seriesKey].count++;
+      }
+    }
+
+    // Top Binge Series
+    let topSeries: { title: string; episodesWatched: number } | undefined = undefined;
+    for (const s of Object.values(seriesWatchMap)) {
+      if (!topSeries || s.count > topSeries.episodesWatched) {
+        topSeries = { title: s.title, episodesWatched: s.count };
+      }
+    }
+
+    // Genres counts
+    const genreCounts: Record<string, number> = {};
+    for (const item of libraryItems) {
+      if (item.genres) {
+        try {
+          const parsed = JSON.parse(item.genres);
+          if (Array.isArray(parsed)) {
+            for (const g of parsed) {
+              genreCounts[g] = (genreCounts[g] || 0) + 1;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    const topGenres = Object.entries(genreCounts)
+      .map(([genre, count]) => ({ genre, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const hours = Math.floor(totalWatchSeconds / 3600);
+    const minutes = Math.floor((totalWatchSeconds % 3600) / 60);
+    const totalWatchTimeFormatted = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+    const totalItems = moviesCount + episodesCount;
+    const completionRatePercent = libraryItems.length > 0
+      ? Math.min(100, Math.round((moviesCount / Math.max(1, libraryItems.length)) * 100))
+      : (totalItems > 0 ? 100 : 0);
+
+    return {
+      totalWatchTimeSeconds: Math.round(totalWatchSeconds),
+      totalWatchTimeFormatted,
+      moviesWatchedCount: moviesCount,
+      episodesWatchedCount: episodesCount,
+      totalItemsCount: totalItems,
+      libraryItemsCount: libraryItems.length,
+      completionRatePercent,
+      topGenres,
+      favoriteSeries: topSeries,
+    };
   }
 
   // --- Library / Favorites ---

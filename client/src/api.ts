@@ -61,6 +61,17 @@ export interface WatchProgress {
   completed: number;
   updatedAt: string;
 }
+export interface ProfileStats {
+  totalWatchTimeSeconds: number;
+  totalWatchTimeFormatted: string;
+  moviesWatchedCount: number;
+  episodesWatchedCount: number;
+  totalItemsCount: number;
+  libraryItemsCount: number;
+  completionRatePercent: number;
+  topGenres: Array<{ genre: string; count: number }>;
+  favoriteSeries?: { title: string; episodesWatched: number };
+}
 
 export interface LibraryItem {
   id: string;
@@ -434,9 +445,26 @@ export const api = {
     });
     return res.json();
   },
-  getProxiedStreamUrl: (originalUrl: string): string => {
+  getProfileStats: async (profileId: string): Promise<ProfileStats | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(profileId)}/stats`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.stats || null;
+    } catch {
+      return null;
+    }
+  },
+  getProxiedStreamUrl: (originalUrl: string, options?: { download?: boolean; filename?: string }): string => {
     if (!originalUrl || originalUrl.startsWith('magnet:')) return originalUrl;
-    return `${API_BASE}/proxy/stream?url=${encodeURIComponent(originalUrl)}`;
+    let url = `${API_BASE}/proxy/stream?url=${encodeURIComponent(originalUrl)}`;
+    if (options?.download) {
+      url += '&download=1';
+      if (options.filename) {
+        url += `&filename=${encodeURIComponent(options.filename)}`;
+      }
+    }
+    return url;
   },
   getProxiedSubtitleUrl: (originalUrl: string): string => {
     if (!originalUrl) return originalUrl;

@@ -7,6 +7,7 @@ interface Props {
   subtitle?: string;
   items: CatalogItem[];
   onSelectItem: (item: CatalogItem) => void;
+  onQuickPlay?: (item: CatalogItem) => void;
   onSeeAll?: () => void;
 }
 
@@ -15,6 +16,7 @@ export const CatalogRow: React.FC<Props> = ({
   subtitle,
   items,
   onSelectItem,
+  onQuickPlay,
   onSeeAll,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -28,7 +30,11 @@ export const CatalogRow: React.FC<Props> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, item: CatalogItem, index: number) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onSelectItem(item);
+      if (e.shiftKey && onQuickPlay) {
+        onQuickPlay(item);
+      } else {
+        onSelectItem(item);
+      }
     } else if (e.key === 'ArrowRight') {
       const parent = e.currentTarget.parentElement;
       if (parent && index < items.length - 1) {
@@ -177,9 +183,18 @@ export const CatalogRow: React.FC<Props> = ({
 
                   {/* Survol Nuvio-style : Bouton Lecture Centré */}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/card:opacity-100 transition-opacity duration-200 flex items-center justify-center pointer-events-none">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-indigo-600/90 text-white flex items-center justify-center shadow-lg shadow-black/50 transform scale-90 group-hover/card:scale-100 transition duration-200 backdrop-blur-sm">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onQuickPlay) onQuickPlay(item);
+                        else onSelectItem(item);
+                      }}
+                      title={`Lecture rapide de ${item.name}`}
+                      className="pointer-events-auto w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-lg shadow-black/50 transform scale-90 group-hover/card:scale-100 hover:scale-110 active:scale-95 transition duration-200 backdrop-blur-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white"
+                    >
                       <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current ml-0.5" />
-                    </div>
+                    </button>
                   </div>
 
                   {/* Barre de progression de reprise (uniquement si >= 2%) */}

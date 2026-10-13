@@ -85,6 +85,15 @@ app.delete('/api/profiles/:id', (req, res) => {
   }
 });
 
+app.get('/api/profiles/:id/stats', (req, res) => {
+  try {
+    const stats = db.getProfileStats(req.params.id);
+    res.json({ success: true, stats });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- WATCH PROGRESS / REPRISE DE LECTURE ---
 app.get('/api/progress/:profileId', (req, res) => {
   try {

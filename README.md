@@ -50,24 +50,37 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Protection parentale par code PIN** : impossible de basculer d'un profil enfant vers un profil adulte sans entrer le code PIN parental.
    - **Isolation totale** de l'historique de lecture, pourcentages d'avancement et bibliothèque de favoris.
 
-6. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
+6. **« Lecture Rapide 1-Clic » (Smart Instant Autoplay)** :
+   - **Lecture Immédiate Netflix-Style** : bouton « Lecture rapide » sur la HeroBanner, au survol des affiches et dans les fiches médias. L'algorithme résout les flux en arrière-plan et sélectionne automatiquement le meilleur flux (priorité VF/VOSTFR selon le profil, cache Debrid instantané et compatibilité navigateur).
+   - **Overlay de chargement réactif** : notification avec indicateur d'analyse et bouton d'annulation fluide.
+
+7. **Gestionnaire de Téléchargements Hors-Ligne Dédié** :
+   - **Interface dédiée (`Alt+D` ou icône en-tête)** : vue d'ensemble des films et épisodes sauvegardés pour le visionnage sans connexion internet (voyages, train, avion).
+   - **Proxy de téléchargement forcé avec nom propre** : injection automatique de l'en-tête `Content-Disposition: attachment; filename="Titre.mp4"` via le proxy Express (`/api/proxy/stream?download=1`).
+   - **Lecture directe hors-ligne** : rejoue le flux téléchargé directement dans le lecteur Stremo sans configuration.
+
+8. **Tableau de Bord de Statistiques de Visionnage (« Mes Statistiques »)** :
+   - **Analyse complète par profil** : calcul en temps réel du temps total passé à regarder des films et séries (heures/minutes), nombre de médias complétés, série la plus dévorée (Top Binge).
+   - **Répartition des genres & Trophées** : jauges de progression par genre et badges cinéphiles débloqués (« Grand Spectateur », « Binge Watcher », « Cinéphile Assidu »).
+
+9. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
    - **Proxy de Streaming Anti-CORS & HTTP 206 Range** : contournement instantané des restrictions cross-origin des serveurs distants (Torbox, Real-Debrid) avec support des requêtes partielles HTTP 206 Range pour une lecture web ultra-fluide.
    - **Proxy de Sous-titres & Conversion WebVTT à la volée** : standardisation automatique de tous les sous-titres OpenSubtitles (.srt) en format WebVTT (.vtt) avec en-têtes CORS permissifs.
    - **Préférences Linguistiques Intelligentes** : détection de la langue audio du flux (VF, MULTI, VO) et activation automatique de la bonne piste de sous-titres (ex: VOSTFR automatique si film étranger, sous-titres masqués si VF).
    - **Chapitrage Exact AniSkip & Communautaire** : saut d'intro et d'outro calé sur les timecodes réels vérifiés par la communauté pour les animes et séries.
    - **Auto-Fallback Transparent en Cas d'Erreur** : si un flux vidéo direct ou Debrid échoue (format non supporté, codec indisponible, lien 403), Stremo bascule automatiquement vers le prochain flux alternatif après un compte à rebours de 3 secondes avec option d'annulation ou basculement immédiat.
    - **Sélecteur de Flux en Cours de Lecture** : bouton `Flux (N)` directement accessible dans la barre de contrôle pour permuter entre 4K, 1080p, ou différents providers Debrid sans jamais quitter ni relancer le lecteur vidéo !
-   - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio intégrée via Web Audio API (`DynamicsCompressorNode`) activable en 1 clic pour apaiser les effets sonores assourdissants et magnifier la clarté des dialogues lors des séances nocturnes.
+   - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio intégrée via Web Audio API (`DynamicsCompressorNode`) activable en 1 clic (ou touche `D`) pour apaiser les effets sonores assourdissants et magnifier la clarté des dialogues lors des séances nocturnes.
    - **Saut Automatique & Manuel du Générique d'Intro** : saut automatique configurable (ex: +85s) dès le début de l'épisode pour les séries, avec bouton flottant manuel (`Touche S`) et possibilité d'annuler.
    - **Saut du Générique de Fin & Binge-Watching** : détection dès le début de l'outro (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours 10s ou raccourci (`Touche N`).
    - **Google Cast & Apple AirPlay** : diffusion directe sur vos Smart TV, Chromecast et récepteurs AirPlay via les API standard Web et Remote Playback.
    - **Téléchargement hors-ligne direct** : bouton 1-clic pour les flux Debrid et liens HTTP directs afin de visionner sans connexion.
    - **Synchronisation fine des sous-titres** : réglage en direct du décalage (`+/-0.5s`, `+/-1.0s`, `0s Reset`) pour synchroniser n'importe quel fichier SRT/VTT OpenSubtitles.
    - **Taille des sous-titres personnalisable** : `Normal`, `Grand`, `Maxi` avec surbrillance noire contrastée pour grand écran ou salon.
-   - **Vitesse de lecture adaptable** : `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x` et mode **Picture-in-Picture (PiP)** natif.
+   - **Vitesse de lecture adaptable** : `0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x` (raccourcis `[` et `]`) et mode **Picture-in-Picture (PiP)** natif.
    - Lancement direct dans les lecteurs externes desktop (**VLC**, **MPV**, lecteur système) et Android (**Just Player**, **Nova Video Player**, **MX Player**).
 
-7. **Écosystème Multi-Écrans, Découverte Réseau Local & Télécommande Mobile Temps Réel** :
+10. **Écosystème Multi-Écrans, Découverte Réseau Local & Télécommande Mobile Temps Réel** :
    - **Découverte Réseau Local Zéro-Configuration (Zero-Conf LAN Discovery)** : détection automatique en direct des écrans Stremo connectés sur le même réseau Wi-Fi local (Salon TV, Mobile, Desktop) avec association en 1 clic sans devoir saisir de code PIN.
    - **Appairage Express TV <50ms par Server-Sent Events (SSE)** : grand code PIN 6 caractères et QR code interactif avec basculement sub-50ms dès validation mobile.
    - **Télécommande Mobile Tactile en Direct** : pavé tactile sur smartphone pour piloter la TV à distance en temps réel (Play/Pause, saut +/-10s, passer l'intro, épisode suivant, contrôle du volume et mute).

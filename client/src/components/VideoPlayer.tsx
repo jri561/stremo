@@ -706,6 +706,21 @@ export const VideoPlayer: React.FC<Props> = ({
       } else if (e.key === 's' || e.key === 'S' || e.key === 'i' || e.key === 'I') {
         e.preventDefault();
         handleSkipIntro();
+      } else if (e.key === '[' || e.key === '{') {
+        e.preventDefault();
+        const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+        const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
+        const nextSpeed = speeds.slice().reverse().find((s) => s < currentSpeed) || 0.5;
+        handleSetSpeed(nextSpeed);
+      } else if (e.key === ']' || e.key === '}') {
+        e.preventDefault();
+        const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+        const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
+        const nextSpeed = speeds.find((s) => s > currentSpeed) || 2;
+        handleSetSpeed(nextSpeed);
+      } else if (e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        toggleNightMode();
       } else if (e.key === 'Escape') {
         if (!document.fullscreenElement) {
           onClose();
@@ -1081,7 +1096,7 @@ export const VideoPlayer: React.FC<Props> = ({
                     <div className="px-3 py-1.5 border-b border-white/5 text-[10px] font-black uppercase text-slate-400">
                       Vitesse
                     </div>
-                    {[0.75, 1, 1.25, 1.5, 2].map((spd) => (
+                    {[0.5, 0.75, 1, 1.25, 1.5, 2].map((spd) => (
                       <button
                         key={spd}
                         onClick={() => handleSetSpeed(spd)}

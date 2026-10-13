@@ -133,6 +133,13 @@ export async function proxyStream(req: Request, res: Response): Promise<void> {
       res.setHeader('accept-ranges', 'bytes');
     }
 
+    // Gestion du téléchargement forcé avec nom de fichier sain
+    if (req.query.download === '1' || req.query.dl === '1') {
+      const rawFilename = (req.query.filename as string) || 'video.mp4';
+      const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'video.mp4';
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    }
+
     if (req.method === 'HEAD' || !upstreamRes.body) {
       res.end();
       return;

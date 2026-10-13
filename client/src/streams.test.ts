@@ -147,6 +147,10 @@ test('api.getProxiedStreamUrl et getProxiedSubtitleUrl génèrent des URLs valid
   const proxiedStream = api.getProxiedStreamUrl(streamUrl);
   assert.equal(proxiedStream, `/api/proxy/stream?url=${encodeURIComponent(streamUrl)}`);
 
+  // Flux HTTP avec option de téléchargement forcé
+  const downloadStream = api.getProxiedStreamUrl(streamUrl, { download: true, filename: 'Film Test.mp4' });
+  assert.equal(downloadStream, `/api/proxy/stream?url=${encodeURIComponent(streamUrl)}&download=1&filename=${encodeURIComponent('Film Test.mp4')}`);
+
   // Magnet link (ne doit pas être proxifié)
   const magnet = 'magnet:?xt=urn:btih:abcdef';
   assert.equal(api.getProxiedStreamUrl(magnet), magnet);
@@ -192,6 +196,54 @@ test('isStreamFrenchAudio, detectStreamAudioLanguage et matchSmartSubtitle gère
 
   // 4. Mode off -> aucun sous-titre
   assert.equal(matchSmartSubtitle(sampleSubs, 'fra', 'eng', 'off'), null);
+});
+
+test('selectBestStreamForQuickPlay choisit le flux optimal selon la langue et la compatibilité web', async () => {
+  const { selectBestStreamForQuickPlay } = await import('./streams.ts');
+
+  const stream4kEngMkv = {
+    name: '[RD⚡] 2160p 4K Remux HEVC TrueHD 7.1',
+    description: '📺 4K • 🎧 TrueHD 7.1 • 💾 45 GB',
+    url: 'https://debrid/4k_heavy.mkv',
+    behaviorHints: { notWebReady: true },
+  };
+
+  const stream1080pFrenchWeb = {
+    name: '[RD⚡] French 1080p WEB-DL H264 AAC',
+    description: '📺 1080p • 🎧 AAC 2.0 • 🌐 🇫🇷 • 💾 2.8 GB',
+    url: 'https://debrid/french_1080p.mp4',
+  };
+
+  const stream1080pEnglishWeb = {
+    name: '[RD⚡] English 1080p WEB-DL H264 AAC',
+    description: '📺 1080p • 🎧 AAC 2.0 • 🌐 🇬🇧 • 💾 2.5 GB',
+    url: 'https://debrid/english_1080p.mp4',
+  };
+
+  // 1. Profil Francophone (web player) -> doit choisir stream1080pFrenchWeb
+  const bestForFrench = selectBestStreamForQuickPlay(
+    [stream4kEngMkv, stream1080pEnglishWeb, stream1080pFrenchWeb],
+    { preferredAudioLanguage: 'fr', preferWebReady: true }
+  );
+  assert.equal(bestForFrench?.url, stream1080pFrenchWeb.url);
+
+  // 2. Profil Anglophone (web player) -> doit choisir stream1080pEnglishWeb
+  const bestForEnglish = selectBestStreamForQuickPlay(
+    [stream4kEngMkv, stream1080pFrenchWeb, stream1080pEnglishWeb],
+    { preferredAudioLanguage: 'en', preferWebReady: true }
+  );
+  assert.equal(bestForEnglish?.url, stream1080pEnglishWeb.url);
+
+  // 3. Lecteur externe / VLC (preferWebReady: false) -> peut privilégier le 4K Remux
+  const bestForExternal = selectBestStreamForQuickPlay(
+    [stream1080pEnglishWeb, stream4kEngMkv],
+    { preferredAudioLanguage: 'en', preferWebReady: false }
+  );
+  assert.equal(bestForExternal?.url, stream4kEngMkv.url);
+
+  // 4. Liste vide ou sans URL -> renvoie null
+  assert.equal(selectBestStreamForQuickPlay([]), null);
+  assert.equal(selectBestStreamForQuickPlay([{ name: 'sans url' } as any]), null);
 });
 
 

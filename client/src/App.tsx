@@ -39,8 +39,11 @@ import { DiscoverView } from './components/DiscoverView';
 import { BackupModal } from './components/BackupModal';
 import { TraktModal } from './components/TraktModal';
 import { DeviceSyncModal } from './components/DeviceSyncModal';
+import { DownloadsModal } from './components/DownloadsModal';
+import { StatsModal } from './components/StatsModal';
+import { getStoredDownloads, type DownloadItem } from './downloads';
 import type { PlayerChoice } from './players';
-import { rankStreams, detectTvDevice } from './streams';
+import { rankStreams, detectTvDevice, selectBestStreamForQuickPlay } from './streams';
 
 export function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -80,6 +83,11 @@ export function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showTraktModal, setShowTraktModal] = useState(false);
   const [showDeviceSyncModal, setShowDeviceSyncModal] = useState(false);
+  const [showDownloadsModal, setShowDownloadsModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [downloadsCount, setDownloadsCount] = useState<number>(() => getStoredDownloads().length);
+  const [isQuickPlaying, setIsQuickPlaying] = useState(false);
+  const [quickPlayTitle, setQuickPlayTitle] = useState('');
   const [initialPairCode, setInitialPairCode] = useState<string | undefined>(undefined);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authKeyInput, setAuthKeyInput] = useState('');
@@ -180,7 +188,14 @@ export function App() {
     }
   };
 
-  // Raccourci clavier global pour recherche rapide (/ ou Ctrl+K)
+  // Synchronisation du compteur de téléchargements
+  useEffect(() => {
+    const handleDownloadsChange = () => setDownloadsCount(getStoredDownloads().length);
+    window.addEventListener('stremo-downloads-changed', handleDownloadsChange);
+    return () => window.removeEventListener('stremo-downloads-changed', handleDownloadsChange);
+  }, []);
+
+  // Raccourci clavier global pour recherche rapide (/ ou Ctrl+K) et téléchargements (Alt+D)
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (
@@ -190,6 +205,9 @@ export function App() {
       ) {
         e.preventDefault();
         setActiveNav('search');
+      } else if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        setShowDownloadsModal(true);
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
@@ -493,6 +511,87 @@ export function App() {
     }
 
     setActivePlayerStream(stream);
+  };
+
+  const handlePlayDownloadedItem = (item: DownloadItem) => {
+    const fakeCatalogItem: CatalogItem = {
+      id: item.mediaId,
+      name: item.title,
+      type: item.mediaType,
+      poster: item.poster,
+    };
+    setSelectedItem(fakeCatalogItem);
+    setSelectedVideoId(item.mediaId);
+    const offlineStream: StreamSource = {
+      name: `Hors-ligne (${item.resolutionLabel || 'Direct'})`,
+      url: item.proxiedDownloadUrl,
+      addonName: 'Stremo Hors-ligne',
+    };
+    setStreams([offlineStream]);
+    setSubtitles([]);
+    setActivePlayerStream(offlineStream);
+  };
+
+  const handleQuickPlay = async (item: CatalogItem, specificVideoId?: string) => {
+    let targetId = item.id;
+    let targetVideoId = specificVideoId;
+    if (item.type === 'series' && item.id.includes(':')) {
+      const parts = item.id.split(':');
+      if (parts.length >= 3) {
+        targetId = parts[0];
+        targetVideoId = item.id;
+      }
+    }
+
+    const cleanItem = { ...item, id: targetId };
+    setSelectedItem(cleanItem);
+    setIsQuickPlaying(true);
+    setQuickPlayTitle(cleanItem.name);
+
+    try {
+      let streamId = targetId;
+      const meta = await api.getMeta(cleanItem.type, targetId);
+      setMetaDetail(meta || cleanItem);
+
+      if (cleanItem.type === 'series') {
+        const vid =
+          targetVideoId ||
+          meta?.videos?.find((v) => v.id === targetVideoId)?.id ||
+          meta?.videos?.[0]?.id;
+        if (vid) {
+          streamId = vid;
+          targetVideoId = vid;
+          setSelectedVideoId(vid);
+        }
+      }
+
+      const [st, subs] = await Promise.all([
+        api.getStreams(cleanItem.type, streamId),
+        api.getSubtitles(cleanItem.type, streamId).catch(() => []),
+      ]);
+
+      setStreams(st);
+      setSubtitles(subs);
+
+      const best = selectBestStreamForQuickPlay(st, {
+        preferredAudioLanguage: activeProfile?.preferredAudioLanguage || 'fr',
+        preferredSubtitleLanguage: activeProfile?.preferredSubtitleLanguage || 'fra',
+        subtitleMode: activeProfile?.subtitleMode || 'foreign_only',
+        preferWebReady: selectedPlayer === 'web',
+      });
+
+      if (best && best.url) {
+        handlePlayStream(best, selectedPlayer);
+      } else {
+        await handleOpenMedia(item, specificVideoId);
+      }
+    } catch (err) {
+      console.error('Erreur lecture rapide:', err);
+      await handleOpenMedia(item, specificVideoId);
+    } finally {
+      setIsQuickPlaying(false);
+      setQuickPlayTitle('');
+    }
   };
 
   // Calcul intelligent de l'épisode suivant pour le mode binge-watching
@@ -845,6 +944,20 @@ export function App() {
             </button>
 
             <button
+              onClick={() => setShowDownloadsModal(true)}
+              className="relative px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Gestionnaire de Téléchargements Hors-Ligne (Raccourci : Alt+D)"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Téléchargements</span>
+              {downloadsCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-indigo-600 text-white shadow-sm">
+                  {downloadsCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setShowDeviceSyncModal(true)}
               className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
               title="Lier Téléviseur, Ordinateur et Téléphone"
@@ -860,6 +973,7 @@ export function App() {
               onCreateProfile={handleCreateProfile}
               onUpdateProfile={handleUpdateProfile}
               onOpenSelector={() => setActiveProfile(null)}
+              onOpenStats={() => setShowStatsModal(true)}
               onOpenTrakt={() => setShowTraktModal(true)}
               onOpenBackup={() => setShowBackupModal(true)}
               onOpenDeviceSync={() => setShowDeviceSyncModal(true)}
@@ -891,7 +1005,7 @@ export function App() {
                     <HeroBanner
                       items={heroFeaturedItems}
                       isInLib={(it) => libraryList.some((l) => l.mediaId === it.id)}
-                      onPlay={(it) => handleOpenMedia(it)}
+                      onPlay={(it) => handleQuickPlay(it)}
                       onOpenDetails={(it) => handleOpenMedia(it)}
                       onToggleLibrary={(it) => handleToggleLibrary(it)}
                     />
@@ -915,6 +1029,7 @@ export function App() {
                           p.duration > 0 ? (p.currentTime / p.duration) * 100 : 0,
                       }))}
                       onSelectItem={(item) => handleOpenMedia(item)}
+                      onQuickPlay={(item) => handleQuickPlay(item)}
                     />
                   )}
 
@@ -931,6 +1046,7 @@ export function App() {
                         year: item.year,
                       }))}
                       onSelectItem={(item) => handleOpenMedia(item)}
+                      onQuickPlay={(item) => handleQuickPlay(item)}
                       onSeeAll={() => setActiveNav('library')}
                     />
                   )}
@@ -968,6 +1084,7 @@ export function App() {
                         title={cat.catalogName.replace(/^\[[^\]]+\]\s*/, '')}
                         items={cat.metas}
                         onSelectItem={(item) => handleOpenMedia(item)}
+                        onQuickPlay={(item) => handleQuickPlay(item)}
                         onSeeAll={() => {
                           setActiveNav('discover');
                           setSelectedCatalogId(cat.catalogId);
@@ -1137,6 +1254,7 @@ export function App() {
           isInLib={libraryList.some((l) => l.mediaId === selectedItem.id)}
           selectedPlayer={selectedPlayer}
           selectedVideoId={selectedVideoId}
+          preferredAudioLanguage={activeProfile?.preferredAudioLanguage}
           progressList={progressList}
           onSearchQuery={(q) => {
             setSearchQuery(q);
@@ -1365,6 +1483,51 @@ export function App() {
             }
           }}
         />
+      )}
+
+      {/* Modale Gestionnaire de Téléchargements Hors-Ligne */}
+      <DownloadsModal
+        isOpen={showDownloadsModal}
+        onClose={() => setShowDownloadsModal(false)}
+        onPlayDownloadedItem={handlePlayDownloadedItem}
+      />
+
+      {/* Modale Statistiques de Visionnage */}
+      {showStatsModal && activeProfile && (
+        <StatsModal
+          isOpen={showStatsModal}
+          profile={activeProfile}
+          onClose={() => setShowStatsModal(false)}
+        />
+      )}
+
+      {/* Overlay de chargement pour la Lecture Rapide 1-clic */}
+      {isQuickPlaying && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in pointer-events-auto">
+          <div className="p-6 rounded-2xl bg-[#111622] border border-indigo-500/40 shadow-2xl flex flex-col items-center text-center max-w-sm space-y-4">
+            <div className="relative">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                <Play className="w-6 h-6 fill-current animate-pulse ml-0.5" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 animate-ping" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white">Lecture rapide en cours</h3>
+              <p className="text-xs text-slate-300 font-medium truncate max-w-[260px]">
+                {quickPlayTitle}
+              </p>
+              <p className="text-[11px] text-indigo-400 font-semibold">
+                Sélection automatique du meilleur flux ⚡
+              </p>
+            </div>
+            <button
+              onClick={() => setIsQuickPlaying(false)}
+              className="px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-300 transition cursor-pointer"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Barre d'assistance Télécommande Mode TV */}

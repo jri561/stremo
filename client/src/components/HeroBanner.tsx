@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Info, Star, Plus, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Info, Star, Plus, Check, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import type { CatalogItem } from '../api';
 
 interface HeroBannerProps {
@@ -132,9 +132,10 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             <button
               onClick={() => onPlay(currentItem)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black hover:bg-slate-200 font-bold text-xs sm:text-sm shadow-xl transition active:scale-95 cursor-pointer"
+              title="Lecture instantanée du meilleur flux adapté à votre profil"
             >
-              <Play className="w-4 h-4 fill-black" />
-              <span>Lecture</span>
+              <Zap className="w-4 h-4 fill-amber-500 text-amber-500" />
+              <span>Lecture rapide</span>
             </button>
 
             <button

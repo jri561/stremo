@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database, Radio } from 'lucide-react';
+import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database, Radio, BarChart3 } from 'lucide-react';
 import type { Profile } from '../api';
 
 interface Props {
@@ -29,6 +29,7 @@ interface Props {
     }
   ) => Promise<void>;
   onOpenSelector: () => void;
+  onOpenStats?: () => void;
   onOpenTrakt?: () => void;
   onOpenBackup?: () => void;
   onOpenDeviceSync?: () => void;
@@ -43,6 +44,7 @@ export const ProfileMenu: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onOpenSelector,
+  onOpenStats,
   onOpenTrakt,
   onOpenBackup,
   onOpenDeviceSync,
@@ -205,6 +207,19 @@ export const ProfileMenu: React.FC<Props> = ({
               >
                 <Tv className="w-4 h-4 text-red-400" />
                 Scrobble Trakt.tv
+              </button>
+            )}
+
+            {onOpenStats && (
+              <button
+                onClick={() => {
+                  onOpenStats();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-500/10 flex items-center gap-2 transition cursor-pointer"
+              >
+                <BarChart3 className="w-4 h-4 text-emerald-400" />
+                Mes Statistiques
               </button>
             )}
 

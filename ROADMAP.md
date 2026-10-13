@@ -152,8 +152,16 @@ flowchart LR
 6. **Saut Automatique d'Intro & Vérification Debrid** :
    - ✅ Saut automatique d'intro configurable par profil (+85s par défaut).
    - ✅ Endpoint de suivi du statut et des jours d'abonnement Real-Debrid et Torbox.
+7. **« Lecture Rapide 1-Clic » (Smart Instant Autoplay)** :
+   - ✅ Résolution automatique en arrière-plan et sélection instantanée du meilleur flux adapté aux préférences de langue du profil (VF/VOSTFR) et compatibilité web sans étape intermédiaire.
+8. **Gestionnaire de Téléchargements Hors-Ligne Dédié** :
+   - ✅ Interface complète des vidéos téléchargées, forçage d'en-tête HTTP `Content-Disposition`, re-téléchargement et lecture directe hors-ligne (`Alt+D`).
+9. **Tableau de Bord & Statistiques de Visionnage (« Mes Statistiques »)** :
+   - ✅ Suivi du temps de visionnage total, compteur de médias terminés, série la plus dévorée (Top Binge), répartition des genres favoris et badges cinéphiles.
+10. **Contrôles Vidéo Étendus** :
+   - ✅ Sélecteur de vitesse de lecture de 0.5x à 2.0x avec raccourcis clavier `[` et `]`, bascule directe Mode Nuit `D`.
 
-### 📍 Phase 3 : Moteur Torrent Intégré & Haute Performance (Long Terme)
+### 📍 Phase 3 : Moteur Torrent Intégré & Packaging Desktop (Long Terme)
 1. **Moteur Torrent WebTorrent / Libtorrent Embarqué** :
    - Streaming peer-to-peer direct sans passer par un serveur debrid obligatoire, avec pré-chargement séquentiel des morceaux vidéo.
 2. **Transcodage Serveur à la Volée (Optionnel pour NAS)** :

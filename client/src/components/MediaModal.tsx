@@ -19,9 +19,9 @@ import {
   Download,
 } from 'lucide-react';
 import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress } from '../api';
-import { AVAILABLE_PLAYERS, getAndroidIntentUrl } from '../players';
-import type { PlayerChoice } from '../players';
-import { rankStreams, matchesResolution, getPlayerRecommendation, type ResolutionFilter, type ParsedStream } from '../streams';
+import { AVAILABLE_PLAYERS, getAndroidIntentUrl, type PlayerChoice } from '../players';
+import { rankStreams, matchesResolution, getPlayerRecommendation, selectBestStreamForQuickPlay, parseStream, type ResolutionFilter, type ParsedStream } from '../streams';
+import { addDownloadItem, triggerBrowserDownload } from '../downloads';
 
 interface Props {
   detail: MetaDetail;
@@ -30,6 +30,7 @@ interface Props {
   isInLib: boolean;
   selectedPlayer: PlayerChoice;
   selectedVideoId?: string;
+  preferredAudioLanguage?: string;
   progressList?: WatchProgress[];
   onSelectVideo?: (videoId: string) => void;
   onSelectPlayer: (p: PlayerChoice) => void;
@@ -47,6 +48,7 @@ export const MediaModal: React.FC<Props> = ({
   isInLib,
   selectedPlayer,
   selectedVideoId,
+  preferredAudioLanguage,
   progressList = [],
   onSelectVideo,
   onSelectPlayer,
@@ -59,6 +61,29 @@ export const MediaModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'sources' | 'episodes' | 'cast' | 'trailer'>('sources');
   const [resolutionFilter, setResolutionFilter] = useState<ResolutionFilter>('all');
   const [onlyDebridCached, setOnlyDebridCached] = useState(false);
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+
+  const handleDownloadStream = (e: React.MouseEvent, p: ParsedStream) => {
+    e.stopPropagation();
+    if (!p.stream.url) return;
+
+    const currentEp = isSeries && selectedVideoId ? detail.videos?.find((v) => v.id === selectedVideoId) : undefined;
+    const dl = addDownloadItem({
+      mediaId: selectedVideoId || detail.id,
+      title: detail.name,
+      mediaType: detail.type === 'series' ? 'series' : 'movie',
+      season: currentEp?.season,
+      episode: currentEp?.episode,
+      poster: detail.poster,
+      streamUrl: p.stream.url,
+      resolutionLabel: p.resolutionLabel,
+      fileSizeLabel: p.sizeLabel,
+    });
+
+    triggerBrowserDownload(dl.proxiedDownloadUrl);
+    setDownloadToast(`Téléchargement lancé : ${detail.name} (${p.resolutionLabel}) 📥`);
+    setTimeout(() => setDownloadToast(null), 3500);
+  };
 
   // Empêcher le défilement de l'arrière-plan et gérer la touche Échap
   useEffect(() => {
@@ -83,7 +108,14 @@ export const MediaModal: React.FC<Props> = ({
     return rankStreams(streams, isWebPlayer);
   }, [streams, isWebPlayer]);
 
-  const bestStream: ParsedStream | null = rankedParsedStreams[0] || null;
+  const bestStream: ParsedStream | null = useMemo(() => {
+    const quick = selectBestStreamForQuickPlay(streams, {
+      preferredAudioLanguage,
+      preferWebReady: isWebPlayer,
+    });
+    if (quick) return parseStream(quick);
+    return rankedParsedStreams[0] || null;
+  }, [streams, preferredAudioLanguage, isWebPlayer, rankedParsedStreams]);
 
   const filteredStreams = useMemo(() => {
     return rankedParsedStreams
@@ -598,17 +630,13 @@ export const MediaModal: React.FC<Props> = ({
                         {/* Boutons d'action */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           {parsed.stream.url && (
-                            <a
-                              href={parsed.stream.url}
-                              download={parsed.fileName || `${detail.name}.mp4`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition cursor-pointer"
+                            <button
+                              onClick={(e) => handleDownloadStream(e, parsed)}
+                              className="p-2 rounded-xl bg-white/5 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 border border-white/10 transition cursor-pointer"
                               title="Télécharger la vidéo hors-ligne"
                             >
                               <Download className="w-4 h-4" />
-                            </a>
+                            </button>
                           )}
                           <button
                             onClick={() => handleLaunch(parsed.stream)}
@@ -806,6 +834,14 @@ export const MediaModal: React.FC<Props> = ({
             </div>
           )}
         </div>
+
+        {/* Toast de confirmation de téléchargement */}
+        {downloadToast && (
+          <div className="absolute bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-indigo-600/95 text-white text-xs font-bold shadow-2xl backdrop-blur-md border border-indigo-400/40 animate-fade-in flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+            <span>{downloadToast}</span>
+          </div>
+        )}
       </div>
     </div>
   );

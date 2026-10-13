@@ -301,4 +301,73 @@ export function matchSmartSubtitle(
   return match || null;
 }
 
+export interface QuickPlayOptions {
+  preferredAudioLanguage?: string;
+  preferredSubtitleLanguage?: string;
+  subtitleMode?: string;
+  preferWebReady?: boolean;
+}
+
+/**
+ * Sélectionne automatiquement le meilleur flux adapté au profil pour une lecture instantanée 1-clic
+ */
+export function selectBestStreamForQuickPlay(
+  streams: StreamSource[],
+  options: QuickPlayOptions = {}
+): StreamSource | null {
+  if (!streams || streams.length === 0) return null;
+  const playable = streams.filter(s => !!s.url);
+  if (playable.length === 0) return null;
+
+  const preferWebReady = options.preferWebReady !== false;
+  const prefAudio = options.preferredAudioLanguage || 'fr';
+
+  const scored = playable.map(s => {
+    const p = parseStream(s);
+    let score = scoreStream(p, preferWebReady);
+
+    // Audio matching bonus
+    const audioLang = detectStreamAudioLanguage(s);
+    const isFrench = isStreamFrenchAudio(s);
+
+    if (prefAudio === 'fr' || prefAudio === 'fra') {
+      if (isFrench) {
+        score += 25000; // Priorité massive aux flux FR pour les francophones
+      } else if (p.languages.includes('🇫🇷')) {
+        score += 20000;
+      }
+    } else if (prefAudio === 'en' || prefAudio === 'eng') {
+      if (audioLang === 'eng' || p.languages.includes('🇬🇧') || p.languages.includes('🇺🇸')) {
+        score += 15000;
+      }
+    } else if (audioLang === prefAudio) {
+      score += 18000;
+    }
+
+    // Debrid cached bonus
+    if (p.cached) {
+      score += 10000;
+    }
+
+    // WebReady bonus
+    if (preferWebReady && p.webReady) {
+      score += 20000;
+    }
+
+    // Resolution bonus: 1080p est idéal pour le navigateur
+    if (p.height === 1080) {
+      score += 5000;
+    } else if (p.height >= 2160) {
+      score += preferWebReady ? 2000 : 8000;
+    } else if (p.height === 720) {
+      score += 3000;
+    }
+
+    return { stream: s, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.stream || null;
+}
+
 

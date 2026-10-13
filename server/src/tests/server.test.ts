@@ -182,3 +182,66 @@ test('DatabaseManager Device Pairing (6-digit code) and Sync Channel', () => {
   // Clean up
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 });
+
+test('DatabaseManager getProfileStats calculates viewing statistics correctly', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test_stats.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const profiles = db.getProfiles();
+  const pId = profiles[0].id;
+
+  // Initial stats
+  const initialStats = db.getProfileStats(pId);
+  assert.strictEqual(initialStats.totalWatchTimeSeconds, 0);
+  assert.strictEqual(initialStats.moviesWatchedCount, 0);
+  assert.strictEqual(initialStats.episodesWatchedCount, 0);
+
+  // Add 1 completed movie (7200s = 2h)
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_movie_1',
+    mediaType: 'movie',
+    title: 'Inception',
+    currentTime: 7200,
+    duration: 7200,
+    completed: 1,
+  });
+
+  // Add 2 episodes of Breaking Bad
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_bb:1:1',
+    mediaType: 'series',
+    title: 'Breaking Bad - S01E01',
+    currentTime: 3000,
+    duration: 3000,
+    completed: 1,
+  });
+
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_bb:1:2',
+    mediaType: 'series',
+    title: 'Breaking Bad - S01E02',
+    currentTime: 2800,
+    duration: 3000,
+    completed: 1,
+  });
+
+  // Add genres to library
+  db.addToLibrary(pId, 'tt_movie_1', 'movie', 'Inception', undefined, '2010', ['Science-Fiction', 'Action']);
+
+  const stats = db.getProfileStats(pId);
+  assert.strictEqual(stats.moviesWatchedCount, 1);
+  assert.strictEqual(stats.episodesWatchedCount, 2);
+  assert.strictEqual(stats.totalItemsCount, 3);
+  assert.strictEqual(stats.totalWatchTimeSeconds, 13200); // 7200 + 3000 + 3000 = 13200s (3h 40m)
+  assert.ok(stats.totalWatchTimeFormatted.includes('3h'));
+  assert.strictEqual(stats.favoriteSeries?.title, 'Breaking Bad');
+  assert.strictEqual(stats.favoriteSeries?.episodesWatched, 2);
+  assert.strictEqual(stats.topGenres.length, 2);
+  assert.strictEqual(stats.topGenres[0].genre, 'Science-Fiction');
+
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
