@@ -34,6 +34,7 @@ import {
   Film,
   Search,
   Palette,
+  Headphones,
 } from 'lucide-react';
 import { api, type StreamSource, type BookmarkItem } from '../api';
 import { getAndroidIntentUrl } from '../players';
@@ -453,8 +454,25 @@ export const VideoPlayer: React.FC<Props> = ({
   const triedTranscodeRef = useRef(false);
   const transcodeClockRef = useRef<TranscodeClock | null>(null);
 
-  const startTranscode = (video: HTMLVideoElement, startTime: number) => {
+  // État audio avancé & transcodage AAC universel
+  const [isTranscodingAudio, setIsTranscodingAudio] = useState<boolean>(false);
+  const [showAudioMenu, setShowAudioMenu] = useState<boolean>(false);
+  const [availableAudioTracks, setAvailableAudioTracks] = useState<
+    Array<{ index: number; codec: string; language?: string; title?: string; channels?: number }>
+  >([]);
+  const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number>(0);
+  const [preferTranscodeAudio, setPreferTranscodeAudio] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_prefer_transcode_audio') === 'true';
+  });
+
+  const startTranscode = (video: HTMLVideoElement, startTime: number, trackIndex?: number) => {
     triedTranscodeRef.current = true;
+    setIsTranscodingAudio(true);
+    const targetTrack = trackIndex !== undefined ? trackIndex : selectedAudioTrackIndex;
+    if (trackIndex !== undefined) {
+      setSelectedAudioTrackIndex(trackIndex);
+    }
+
     if (transcodeClockRef.current) {
       transcodeClockRef.current.setOffset(startTime);
     } else {
@@ -462,7 +480,7 @@ export const VideoPlayer: React.FC<Props> = ({
         video,
         { offset: startTime, duration: duration > 0 ? duration : 0 },
         (absTime) => {
-          startTranscode(video, absTime);
+          startTranscode(video, absTime, trackIndex ?? selectedAudioTrackIndex);
         }
       );
       api.probeDuration(streamUrl).then((dur) => {
@@ -472,10 +490,55 @@ export const VideoPlayer: React.FC<Props> = ({
         }
       }).catch(() => {});
     }
-    const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime, mode: 'audio' });
+    const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, {
+      startTime,
+      mode: 'audio',
+      audioTrack: targetTrack >= 0 ? targetTrack : undefined,
+    });
     video.src = transcodeUrl;
     video.load();
     video.play().catch(() => {});
+  };
+
+  const stopTranscode = (video: HTMLVideoElement) => {
+    setIsTranscodingAudio(false);
+    triedTranscodeRef.current = false;
+    const curr = Math.round(video.currentTime || 0);
+    if (transcodeClockRef.current) {
+      transcodeClockRef.current.dispose();
+      transcodeClockRef.current = null;
+    }
+    const directUrl = useStreamProxy ? api.getProxiedStreamUrl(streamUrl) : streamUrl;
+    video.src = directUrl;
+    video.load();
+    video.currentTime = curr;
+    video.play().catch(() => {});
+    triggerOSD('Son direct (source originale)', '🔊');
+    setSkipToast('Retour au son direct');
+    setTimeout(() => setSkipToast(null), 2500);
+  };
+
+  const handleToggleAudioTranscode = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isTranscodingAudio) {
+      stopTranscode(video);
+    } else {
+      const curTime = Math.round(video.currentTime || initialTime || 0);
+      setSkipToast("⚡ Activation du son universel (Transcodage AAC direct)...");
+      triggerOSD('Son AAC universel activé', '⚡');
+      startTranscode(video, curTime);
+    }
+  };
+
+  const handleSelectAudioTrack = (trackIndex: number) => {
+    setSelectedAudioTrackIndex(trackIndex);
+    const video = videoRef.current;
+    if (!video) return;
+    const curTime = Math.round(video.currentTime || initialTime || 0);
+    setSkipToast(`Piste audio #${trackIndex + 1} sélectionnée ⚡`);
+    triggerOSD(`Piste audio #${trackIndex + 1}`, '🎧');
+    startTranscode(video, curTime, trackIndex);
   };
 
   useEffect(() => {
@@ -699,6 +762,24 @@ export const VideoPlayer: React.FC<Props> = ({
 
     const effectiveStreamUrl = api.resolvePlayableUrl(streamUrl, useStreamProxy);
     triedProxyRef.current = useStreamProxy;
+
+    // Sondage du flux pour détecter les codecs audio et pistes disponibles
+    api.probeStream(streamUrl).then((probe) => {
+      if (probe?.audioTracks && probe.audioTracks.length > 0) {
+        setAvailableAudioTracks(probe.audioTracks);
+        const codec = String(probe.audioCodec || '').toLowerCase();
+        const isUnsupportedCodec = ['truehd', 'dts', 'dca', 'ac3', 'eac3', 'mlp'].some((c) => codec.includes(c));
+        if (isUnsupportedCodec && !triedTranscodeRef.current) {
+          setSkipToast(`💡 Audio ${probe.audioCodec?.toUpperCase()} détecté : Cliquez sur "⚡ Audio AAC" si vous n'avez pas de son.`);
+        }
+      }
+    }).catch(() => {});
+
+    // Si l'utilisateur préfère systématiquement le son transcodé (ex: environnement Linux)
+    if (preferTranscodeAudio && !streamUrl.includes('/api/transcode/stream')) {
+      startTranscode(video, initialTime || 0);
+      return;
+    }
 
     const isHls = effectiveStreamUrl.includes('.m3u8') || effectiveStreamUrl.includes('hls');
 
@@ -1167,6 +1248,9 @@ export const VideoPlayer: React.FC<Props> = ({
       } else if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
         handleAddBookmark();
+      } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        handleToggleAudioTranscode();
       } else if (e.key === 'Escape') {
         if (!document.fullscreenElement) {
           onClose();
@@ -1582,6 +1666,151 @@ export const VideoPlayer: React.FC<Props> = ({
                   {nightMode ? 'Nuit' : ''}
                 </span>
               </button>
+
+              {/* Menu & Bouton Réparer le son / Audio AAC */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowAudioMenu(!showAudioMenu);
+                    setShowBookmarkMenu(false);
+                    setShowAdjustMenu(false);
+                    setShowSleepMenu(false);
+                    setShowSpeedMenu(false);
+                    setShowSubMenu(false);
+                    setShowSkipMenu(false);
+                    setShowStreamSelector(false);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                    isTranscodingAudio
+                      ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={
+                    isTranscodingAudio
+                      ? 'Audio AAC Universel ACTIF (Résout les problèmes de silence sur AC3/DTS/TrueHD)'
+                      : 'Pas de son ? Cliquez pour réparer et activer le son universel AAC'
+                  }
+                >
+                  <Headphones className={`w-4 h-4 ${isTranscodingAudio ? 'text-emerald-400 animate-pulse' : 'text-slate-300'}`} />
+                  <span className="text-[10px] font-bold hidden sm:inline">
+                    {isTranscodingAudio ? 'AAC ⚡' : 'Audio'}
+                  </span>
+                </button>
+
+                {showAudioMenu && (
+                  <div className="absolute left-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3.5 z-50 space-y-3">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-white/5">
+                      <div className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1.5">
+                        <Headphones className="w-3.5 h-3.5 text-emerald-400" />
+                        Options Audio & Réparation du son
+                      </div>
+                      <button
+                        onClick={() => setShowAudioMenu(false)}
+                        className="text-slate-400 hover:text-white p-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          if (isTranscodingAudio) stopTranscode(videoRef.current!);
+                          setShowAudioMenu(false);
+                        }}
+                        className={`w-full p-2.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                          !isTranscodingAudio
+                            ? 'bg-white/10 text-white border border-white/15'
+                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-white">Son Direct (Original)</div>
+                          <div className="text-[10px] text-slate-400">Flux brut source sans conversion</div>
+                        </div>
+                        {!isTranscodingAudio && <Check className="w-4 h-4 text-emerald-400" />}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (!isTranscodingAudio) handleToggleAudioTranscode();
+                          setShowAudioMenu(false);
+                        }}
+                        className={`w-full p-2.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                          isTranscodingAudio
+                            ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
+                            : 'text-slate-300 hover:text-white hover:bg-white/5 border border-emerald-500/20'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold flex items-center gap-1.5 text-emerald-300">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> ⚡ Réparer le son (Transcodage AAC)
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Recommandé pour AC3, EAC3, DTS, TrueHD & 5.1/7.1
+                          </div>
+                        </div>
+                        {isTranscodingAudio && <Check className="w-4 h-4 text-emerald-400" />}
+                      </button>
+                    </div>
+
+                    {/* Liste des pistes audio détectées via probe si disponibles */}
+                    {availableAudioTracks.length > 1 && (
+                      <div className="pt-2 border-t border-white/5">
+                        <div className="text-[10px] font-bold uppercase text-slate-400 mb-1.5 flex items-center justify-between">
+                          <span>Pistes Audio Détectées ({availableAudioTracks.length})</span>
+                          <span className="text-[9px] text-indigo-400 font-mono">FFmpeg</span>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                          {availableAudioTracks.map((tr) => (
+                            <button
+                              key={tr.index}
+                              onClick={() => {
+                                handleSelectAudioTrack(tr.index);
+                                setShowAudioMenu(false);
+                              }}
+                              className={`w-full p-2 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
+                                isTranscodingAudio && selectedAudioTrackIndex === tr.index
+                                  ? 'bg-emerald-600/30 text-emerald-300 font-bold border border-emerald-500/30'
+                                  : 'text-slate-300 hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="truncate">
+                                <span className="font-mono text-[10px] mr-1.5 text-indigo-400">#{tr.index + 1}</span>
+                                <span>{tr.title || (tr.language ? tr.language.toUpperCase() : `Piste ${tr.index + 1}`)}</span>
+                                <span className="text-[10px] text-slate-500 ml-1.5">
+                                  ({tr.codec?.toUpperCase()}{tr.channels ? ` • ${tr.channels}ch` : ''})
+                                </span>
+                              </div>
+                              {isTranscodingAudio && selectedAudioTrackIndex === tr.index && (
+                                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Option persistante Toujours transcoder */}
+                    <div className="pt-2 border-t border-white/5">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={preferTranscodeAudio}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setPreferTranscodeAudio(val);
+                            localStorage.setItem('stremo_prefer_transcode_audio', String(val));
+                            triggerOSD(val ? 'Toujours son AAC activé' : 'Toujours son AAC désactivé', '⚙️');
+                          }}
+                          className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-400 w-3.5 h-3.5"
+                        />
+                        <span>Toujours utiliser l'audio AAC (Recommandé Linux)</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 relative">

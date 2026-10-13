@@ -4,6 +4,14 @@ import { isPublicHttpUrl, isSafePlayableUrl } from './addonClient.js';
 import { isTunnelRequest } from './auth.js';
 import { extractInfoHash, toMagnetUri } from './torrentEngine.js';
 
+export interface AudioTrackInfo {
+  index: number;
+  codec: string;
+  language?: string;
+  title?: string;
+  channels?: number;
+}
+
 export interface StreamProbeResult {
   hasVideo: boolean;
   videoCodec?: string;
@@ -11,6 +19,7 @@ export interface StreamProbeResult {
   audioCodec?: string;
   channels?: number;
   duration?: number;
+  audioTracks?: AudioTrackInfo[];
 }
 
 export type TranscodeMode = 'audio' | 'full';
@@ -42,8 +51,14 @@ export function resolveTranscodeInput(raw: unknown, port: string | number, acces
   return isPublicHttpUrl(raw, true) ? raw : null;
 }
 
-/** Arguments ffmpeg : première piste vidéo + première piste audio, sans sous-titres, MP4 fragmenté vers stdout. */
-export function buildFfmpegArgs(opts: { input: string; startTime?: number; mode?: TranscodeMode }): string[] {
+/** Arguments ffmpeg : première piste vidéo + piste audio (ou ciblée par langue/index), sans sous-titres, MP4 fragmenté vers stdout. */
+export function buildFfmpegArgs(opts: {
+  input: string;
+  startTime?: number;
+  mode?: TranscodeMode;
+  audioTrackIndex?: number;
+  audioLang?: string;
+}): string[] {
   const start = Number.isFinite(opts.startTime) ? Math.min(Math.max(opts.startTime as number, 0), MAX_START_TIME_S) : 0;
   const args = [
     '-hide_banner',
@@ -56,11 +71,25 @@ export function buildFfmpegArgs(opts: { input: string; startTime?: number; mode?
     '-reconnect_delay_max', '5',
   ];
   if (start > 0) args.push('-ss', String(start));
-  args.push('-i', opts.input, '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn');
+  args.push('-i', opts.input);
+
+  // Mapping vidéo (1ère piste)
+  args.push('-map', '0:v:0');
+
+  // Mapping audio (piste spécifique par index, ou par langue, ou 1ère piste disponible)
+  if (opts.audioTrackIndex !== undefined && Number.isInteger(opts.audioTrackIndex) && opts.audioTrackIndex >= 0) {
+    args.push('-map', `0:a:${opts.audioTrackIndex}?`);
+  } else if (opts.audioLang) {
+    args.push('-map', `0:a:m:language:${opts.audioLang}?`, '-map', '0:a:0?');
+  } else {
+    args.push('-map', '0:a:0?');
+  }
+  args.push('-sn', '-dn');
+
   if (opts.mode === 'full') {
     args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
   } else {
-    // Copie vidéo pure (aucun coût CPU), seul l'audio est converti
+    // Copie vidéo pure (aucun coût CPU), seul l'audio est converti en AAC stéréo universel
     args.push('-c:v', 'copy');
   }
   args.push(
@@ -135,6 +164,14 @@ export class TranscodeEngine {
           const video = streams.find((s) => s.codec_type === 'video');
           const audio = streams.find((s) => s.codec_type === 'audio');
           const duration = Number(data.format?.duration);
+          const audioStreams = streams.filter((s) => s.codec_type === 'audio');
+          const audioTracks: AudioTrackInfo[] = audioStreams.map((s, idx) => ({
+            index: idx,
+            codec: s.codec_name,
+            language: s.tags?.language,
+            title: s.tags?.title || s.tags?.handler_name,
+            channels: s.channels,
+          }));
           finish({
             hasVideo: !!video,
             videoCodec: video?.codec_name,
@@ -142,6 +179,7 @@ export class TranscodeEngine {
             audioCodec: audio?.codec_name,
             channels: audio?.channels,
             duration: Number.isFinite(duration) && duration > 0 ? duration : undefined,
+            audioTracks,
           });
         } catch {
           finish(null);
@@ -165,6 +203,9 @@ export class TranscodeEngine {
 
     const mode: TranscodeMode = req.query.mode === 'full' ? 'full' : 'audio';
     const startTime = Number(req.query.startTime ?? 0);
+    const audioTrackIndex = req.query.audioTrack !== undefined ? Number(req.query.audioTrack) : undefined;
+    const audioLang = typeof req.query.audioLang === 'string' ? req.query.audioLang : undefined;
+
     if (!Number.isFinite(startTime) || startTime < 0) {
       res.status(400).json({ success: false, error: 'startTime invalide' });
       return;
@@ -183,7 +224,7 @@ export class TranscodeEngine {
       return;
     }
 
-    const proc = spawn(this.ffmpegPath, buildFfmpegArgs({ input, startTime, mode }), {
+    const proc = spawn(this.ffmpegPath, buildFfmpegArgs({ input, startTime, mode, audioTrackIndex, audioLang }), {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.jobs.add(proc);

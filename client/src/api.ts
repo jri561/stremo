@@ -586,13 +586,32 @@ export const api = {
       return null;
     }
   },
-  getTranscodedStreamUrl: (rawUrl: string, options?: { startTime?: number; mode?: 'audio' | 'full' }): string => {
+  probeStream: async (rawUrl: string): Promise<any | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/transcode/probe?url=${encodeURIComponent(rawUrl)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.probe || null;
+    } catch {
+      return null;
+    }
+  },
+  getTranscodedStreamUrl: (
+    rawUrl: string,
+    options?: { startTime?: number; mode?: 'audio' | 'full'; audioTrack?: number; audioLang?: string }
+  ): string => {
     let url = `${API_BASE}/transcode/stream?url=${encodeURIComponent(rawUrl)}`;
     if (options?.startTime && options.startTime > 0) {
       url += `&startTime=${options.startTime}`;
     }
     if (options?.mode) {
       url += `&mode=${options.mode}`;
+    }
+    if (options?.audioTrack !== undefined) {
+      url += `&audioTrack=${options.audioTrack}`;
+    }
+    if (options?.audioLang) {
+      url += `&audioLang=${encodeURIComponent(options.audioLang)}`;
     }
     return withAccessKey(url);
   },

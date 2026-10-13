@@ -185,7 +185,7 @@ export function getPlayerRecommendation(p: ParsedStream): {
   }
   return {
     isWebOk: false,
-    label: p.height >= 2160 ? '4K Ultra HD (VLC / Just Player conseillé)' : 'Piste audio haute qualité (VLC conseillé)',
+    label: p.height >= 2160 ? '4K Ultra HD • Transcodage AAC ou VLC disponible' : 'Audio multicanal • Transcodage AAC ou VLC disponible',
     badgeClass: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
   };
 }

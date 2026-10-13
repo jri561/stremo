@@ -13,6 +13,7 @@ import {
   Sparkles,
   Info,
   Sliders,
+  Headphones,
 } from 'lucide-react';
 import type { Profile } from '../api';
 import { generateSubtitleCss, type SubtitleStyleSettings } from '../subtitles';
@@ -88,6 +89,11 @@ export const SettingsModal: React.FC<Props> = ({
     return localStorage.getItem('stremo_use_stream_proxy') === 'true';
   });
 
+  // Compatibilité audio maximale (Transcodage AAC universel)
+  const [preferTranscodeAudio, setPreferTranscodeAudio] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_prefer_transcode_audio') === 'true';
+  });
+
   const [savingToast, setSavingToast] = useState(false);
 
   if (!isOpen) return null;
@@ -116,6 +122,7 @@ export const SettingsModal: React.FC<Props> = ({
     localStorage.setItem('stremo_auto_skip_outro', String(autoSkipOutro));
     localStorage.setItem('stremo_skip_outro_sec', String(skipOutroSec));
     localStorage.setItem('stremo_use_stream_proxy', String(useStreamProxy));
+    localStorage.setItem('stremo_prefer_transcode_audio', String(preferTranscodeAudio));
 
     setSavingToast(true);
     setTimeout(() => {
@@ -584,6 +591,32 @@ export const SettingsModal: React.FC<Props> = ({
                   <span
                     className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
                       useStreamProxy ? 'translate-x-5' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Compatibilité Audio Maximale (Transcodage AAC Stéréo) */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Headphones className="w-4 h-4 text-emerald-400" />
+                    <span>Compatibilité Audio Maximale (Son Universel AAC)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Convertit automatiquement l'audio haute fidélité (AC3, DTS, TrueHD) en AAC stéréo universel. Recommandé sur Linux si vous n'entendez aucun son sur certains films.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreferTranscodeAudio(!preferTranscodeAudio)}
+                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                    preferTranscodeAudio ? 'bg-emerald-600' : 'bg-white/20'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                      preferTranscodeAudio ? 'translate-x-5' : ''
                     }`}
                   />
                 </button>
