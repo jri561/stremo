@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Check, Pencil, Lock, Radio, Tv, Sparkles } from 'lucide-react';
+import { Plus, Check, Pencil, Lock, Radio, Tv, Sparkles, ShieldCheck } from 'lucide-react';
 import type { Profile } from '../api';
 import { getProfileTheme } from '../profileCustomization';
 import { ProfileAvatarIcon } from './ProfileAvatarIcon';
@@ -34,6 +34,7 @@ interface Props {
     }
   ) => Promise<void>;
   onDeleteProfile?: (id: string) => Promise<void>;
+  onOpenAccount?: () => void;
   onOpenDeviceSync?: () => void;
   onToggleTvMode?: () => void;
   isTvMode?: boolean;
@@ -47,6 +48,7 @@ export const ProfileSelector: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onDeleteProfile,
+  onOpenAccount,
   onOpenDeviceSync,
   onToggleTvMode,
   isTvMode,
@@ -228,6 +230,17 @@ export const ProfileSelector: React.FC<Props> = ({
 
       {/* Boutons d'action bas */}
       <div className="flex flex-wrap items-center justify-center gap-3">
+        {onOpenAccount && !isManaging && (
+          <button
+            onClick={onOpenAccount}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer border bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border-indigo-500/30 flex items-center gap-2 shadow-sm"
+            title="Gérer votre compte Stremo et la synchronisation cloud"
+          >
+            <ShieldCheck className="w-4 h-4 text-indigo-400" />
+            Mon Compte
+          </button>
+        )}
+
         {onOpenDeviceSync && !isManaging && (
           <button
             onClick={onOpenDeviceSync}

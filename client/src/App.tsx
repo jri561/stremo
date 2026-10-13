@@ -15,6 +15,7 @@ import {
   Radio,
   Tv,
   Sliders,
+  ShieldCheck,
 } from 'lucide-react';
 import { api, accessKey, isKidsSafeItem } from './api';
 import type {
@@ -44,6 +45,7 @@ import { DeviceSyncModal } from './components/DeviceSyncModal';
 import { DownloadsModal } from './components/DownloadsModal';
 import { StatsModal } from './components/StatsModal';
 import { SettingsModal } from './components/SettingsModal';
+import { AccountModal } from './components/AccountModal';
 import { getStoredDownloads, type DownloadItem } from './downloads';
 import type { PlayerChoice } from './players';
 import { rankStreams, detectTvDevice, selectBestStreamForQuickPlay } from './streams';
@@ -91,6 +93,7 @@ export function App() {
   const [showDownloadsModal, setShowDownloadsModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [downloadsCount, setDownloadsCount] = useState<number>(() => getStoredDownloads().length);
   const [isQuickPlaying, setIsQuickPlaying] = useState(false);
   const [quickPlayTitle, setQuickPlayTitle] = useState('');
@@ -173,6 +176,13 @@ export function App() {
     const handleAuthReq = () => setShowAuthModal(true);
     window.addEventListener('stremo-auth-required', handleAuthReq);
 
+    const handleAccountChange = () => {
+      loadProfiles();
+      loadAddons();
+      setActiveProfile(null);
+    };
+    window.addEventListener('stremo-account-changed', handleAccountChange);
+
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
@@ -181,6 +191,7 @@ export function App() {
 
     return () => {
       window.removeEventListener('stremo-auth-required', handleAuthReq);
+      window.removeEventListener('stremo-account-changed', handleAccountChange);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     };
   }, []);
@@ -796,11 +807,22 @@ export function App() {
           onCreateProfile={handleCreateProfile}
           onUpdateProfile={handleUpdateProfile}
           onDeleteProfile={handleDeleteProfile}
+          onOpenAccount={() => setShowAccountModal(true)}
           onOpenDeviceSync={() => setShowDeviceSyncModal(true)}
           onToggleTvMode={toggleTvMode}
           isTvMode={isTvMode}
         />
         {renderPinModal()}
+        {showAccountModal && (
+          <AccountModal
+            isOpen={showAccountModal}
+            onClose={() => setShowAccountModal(false)}
+            onAccountUpdated={() => {
+              loadProfiles();
+              loadAddons();
+            }}
+          />
+        )}
         {showDeviceSyncModal && (
           <DeviceSyncModal
             initialPairCode={initialPairCode}
@@ -1056,6 +1078,15 @@ export function App() {
               <span className="hidden md:inline">Paramètres</span>
             </button>
 
+            <button
+              onClick={() => setShowAccountModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Mon Compte Stremo & Synchronisation multi-écrans"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Compte</span>
+            </button>
+
             <ProfileMenu
               profiles={profiles}
               activeProfile={activeProfile}
@@ -1063,6 +1094,7 @@ export function App() {
               onCreateProfile={handleCreateProfile}
               onUpdateProfile={handleUpdateProfile}
               onOpenSelector={() => setActiveProfile(null)}
+              onOpenAccount={() => setShowAccountModal(true)}
               onOpenSettings={() => setShowSettingsModal(true)}
               onOpenStats={() => setShowStatsModal(true)}
               onOpenTrakt={() => setShowTraktModal(true)}
@@ -1573,6 +1605,21 @@ export function App() {
           onSelectPlayer={handleSelectPlayer}
           isTvMode={isTvMode}
           onToggleTvMode={toggleTvMode}
+        />
+      )}
+
+      {/* Modale Mon Compte & Synchronisation Cloud Multi-Écrans */}
+      {showAccountModal && (
+        <AccountModal
+          isOpen={showAccountModal}
+          onClose={() => setShowAccountModal(false)}
+          onAccountUpdated={() => {
+            loadProfiles();
+            loadAddons();
+            if (activeProfile) {
+              loadProfileData(activeProfile.id);
+            }
+          }}
         />
       )}
 

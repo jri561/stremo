@@ -152,6 +152,15 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
     - **Égaliseur d'Image Vidéo & Ratios d'Aspect** : formats (16:9, 21:9 Cinemascope, 4:3, zoom) et égaliseur dynamique GPU (luminosité, contraste, saturation).
     - **Signets Personnels & Fiche Filmographie Artiste (`PersonModal`)** : marqueurs de timeline interactifs et exploration de carrière en un clic.
 
+20. **Système Multi-Comptes Sécurisé & Synchronisation Cloud Multi-Écrans** :
+    - **Authentification Cryptographique Forte** : mots de passe hachés avec `scrypt` natif (`crypto.scryptSync`, sel aléatoire 16 octets, $N=16384, r=8, p=1$) et vérification en temps constant via `crypto.timingSafeEqual` pour parer les attaques par canal auxiliaire.
+    - **Jetons de Session Cryptographiques (64 hex)** : générés par `crypto.randomBytes(32)` avec persistance sécurisée sur 90 jours et expiration automatique.
+    - **Isolation Étanche par Compte** : chaque compte dispose de ses propres profils, historique de lecture, reprises au millième de seconde, favoris et add-ons personnalisés.
+    - **Gestionnaire de Sessions Actives** : visualisez tous les appareils connectés (Navigateur Desktop, Android Mobile, Android TV Salon), leur date de connexion et révoquez un accès suspect à distance en 1 clic.
+    - **Mode Invité Local Transparent** : aucun compte obligatoire pour démarrer l'application ; le mode invité local fonctionne immédiatement sans friction.
+    - **Réclamation des Données Locales en 1 Clic (« Claim Local Data »)** : lors de l'inscription ou de la connexion, vos profils locaux et historiques peuvent être transférés instantanément sur votre compte cloud.
+    - **Interface Moderne Dédiée (`AccountModal`)** : accessible depuis l'écran « Qui regarde ? », la barre de navigation et le menu profil.
+
 ---
 
 ## 🔒 Sécurité & Durcissement
@@ -169,12 +178,14 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
 ```
 stremo/
 ├── server/                               # Serveur API Express & Moteur Stremio (Node.js + node:sqlite)
-│   ├── src/db.ts                         # Gestionnaire SQLite (profils, reprise, bibliothèque, addons)
+│   ├── src/db.ts                         # Gestionnaire SQLite (profils, comptes, sessions, addons)
+│   ├── src/accountAuth.ts                # Hachage scrypt, timingSafeEqual & tokens de session
 │   ├── src/addonClient.ts                # Client Stremio v3 (cache TTL, fetch minuté, masquage)
 │   ├── src/auth.ts                       # Authentification, timingSafeEqual & détection tunnel SSRF
 │   ├── src/torrentEngine.ts              # Moteur WebTorrent séquentiel & streaming HTTP 206
 │   ├── src/transcodeEngine.ts            # Moteur FFmpeg de remuxing & transcodage audio/vidéo
-│   ├── src/index.ts                      # Routes API REST & proxy parallèle (Promise.allSettled)
+│   ├── src/index.ts                      # Routes API REST, scoping des requêtes & proxy parallèle
+│   ├── src/tests/accounts.test.ts        # Tests d'authentification scrypt, tokens & sessions
 │   ├── src/tests/server.test.ts          # Tests d'isolation des profils, Trakt, backup et cache
 │   ├── src/tests/media.test.ts           # Tests intégration réels : transcodage FFmpeg, P2P WebTorrent
 │   ├── src/tests/security.test.ts        # Tests de validation d'URL et de masquage
@@ -184,18 +195,20 @@ stremo/
     ├── src/components/HeroBanner.tsx     # Carrousel d'accueil rotatif immersif
     ├── src/components/CatalogRow.tsx     # Rails horizontaux avec défilement fluide
     ├── src/components/MediaModal.tsx     # Fiche détaillée avec analyse de flux & multi-lecteurs
+    ├── src/components/AccountModal.tsx   # Modale de connexion, inscription & sessions cloud
     ├── src/components/PersonModal.tsx    # Fiche filmographie artiste (acteur / réalisateur)
     ├── src/components/SkeletonRow.tsx    # Squelettes de chargement à effet shimmer
     ├── src/components/AddonManager.tsx   # Gestionnaire d'add-ons avec cartes enrichies
-    ├── src/components/ProfileMenu.tsx    # Menu déroulant de changement de profil
-    ├── src/components/ProfileSelector.tsx# Sélecteur d'accueil multi-profils
+    ├── src/components/ProfileMenu.tsx    # Menu déroulant de changement de profil & compte
+    ├── src/components/ProfileSelector.tsx# Sélecteur d'accueil multi-profils & mode compte
     ├── src/components/VideoPlayer.tsx    # Lecteur vidéo intégré HLS, P2P séquentiel & égaliseur
     ├── src/transcodeClock.ts             # Horloge absolue & gestion du buffer pour flux transcodé
     ├── src/transcodeClock.test.ts        # Tests unitaires de synchronisation d'horloge et d'URLs
     ├── src/streams.ts                    # Moteur d'analyse et de classement des flux
     ├── src/streams.test.ts               # Tests unitaires du parseur de flux
+    ├── src/account.test.ts               # Tests unitaires du client API de compte
     ├── src/players.ts                    # Configuration des lecteurs & Intents Android
-    ├── src/api.ts                        # Client API & gestionnaire de clé d'accès
+    ├── src/api.ts                        # Client API avec gestion du jeton de compte & clé d'accès
     └── src/App.tsx                       # Shell responsive, recherche unifiée & navigation
 ```
 

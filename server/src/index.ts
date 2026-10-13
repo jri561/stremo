@@ -30,10 +30,29 @@ app.get('/api/auth-check', (req, res) => {
   res.json({ success: true, required: !!accessKey, ok: !accessKey || keysMatch(accessKey, req.header('x-stremo-key')) });
 });
 
+// Extraction sécurisée de la session de compte (en-tête Bearer ou x-account-token ou query)
+function getAccountFromReq(req: express.Request): { accountId?: string; account?: any; token?: string } {
+  let token = req.header('x-account-token');
+  if (!token) {
+    const authHeader = req.header('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    }
+  }
+  if (!token && typeof req.query.account_token === 'string') {
+    token = req.query.account_token;
+  }
+  if (!token) return {};
+  const sessionData = db.getAccountSession(token);
+  if (!sessionData) return { token };
+  return { accountId: sessionData.account.id, account: sessionData.account, token };
+}
+
 // --- PROFILES ---
 app.get('/api/profiles', (req, res) => {
   try {
-    const profiles = db.getProfiles();
+    const { accountId } = getAccountFromReq(req);
+    const profiles = db.getProfiles(accountId);
     res.json({ success: true, profiles });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -42,6 +61,7 @@ app.get('/api/profiles', (req, res) => {
 
 app.post('/api/profiles', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { name, avatar, color, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     if (!name) return res.status(400).json({ error: 'Nom requis' });
     const profile = db.createProfile(
@@ -52,7 +72,8 @@ app.post('/api/profiles', (req, res) => {
       preferredAudioLanguage,
       preferredSubtitleLanguage,
       subtitleMode,
-      color || 'indigo'
+      color || 'indigo',
+      accountId
     );
     res.json({ success: true, profile });
   } catch (err: any) {
@@ -62,6 +83,7 @@ app.post('/api/profiles', (req, res) => {
 
 app.put('/api/profiles/:id', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { name, avatar, color, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     const updated = db.updateProfile(req.params.id, {
       name,
@@ -72,8 +94,8 @@ app.put('/api/profiles/:id', (req, res) => {
       preferredAudioLanguage,
       preferredSubtitleLanguage,
       subtitleMode,
-    });
-    if (!updated) return res.status(404).json({ error: 'Profil non trouvé' });
+    }, accountId);
+    if (!updated) return res.status(404).json({ error: 'Profil non trouvé ou non autorisé' });
     res.json({ success: true, profile: updated });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -82,7 +104,8 @@ app.put('/api/profiles/:id', (req, res) => {
 
 app.delete('/api/profiles/:id', (req, res) => {
   try {
-    db.deleteProfile(req.params.id);
+    const { accountId } = getAccountFromReq(req);
+    db.deleteProfile(req.params.id, accountId);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -223,7 +246,8 @@ app.delete('/api/bookmarks/:id', (req, res) => {
 // --- ADDONS ---
 app.get('/api/addons', async (req, res) => {
   try {
-    const addons = await Promise.all(db.getAddons().map(async (a: any) => {
+    const { accountId } = getAccountFromReq(req);
+    const addons = await Promise.all(db.getAddons(accountId).map(async (a: any) => {
       let manifest: any = null;
       try {
         const m = await new AddonClient(a.url, db).getManifest();
@@ -243,11 +267,12 @@ app.get('/api/addons', async (req, res) => {
 
 app.post('/api/addons', async (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { url } = req.body;
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return res.status(400).json({ error: 'URL http(s) requise' });
     const client = new AddonClient(url, db);
     const manifest = await client.getManifest();
-    db.addAddon(manifest.id, manifest.name, url);
+    db.addAddon(manifest.id, manifest.name, url, accountId);
     res.json({ success: true, manifest: { id: manifest.id, name: manifest.name } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -256,7 +281,8 @@ app.post('/api/addons', async (req, res) => {
 
 app.delete('/api/addons/:id', (req, res) => {
   try {
-    db.removeAddon(req.params.id);
+    const { accountId } = getAccountFromReq(req);
+    db.removeAddon(req.params.id, accountId);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -334,7 +360,8 @@ app.post('/api/trakt/scrobble', async (req, res) => {
 // --- BACKUP & EXPORT/IMPORT ---
 app.get('/api/backup/export', (req, res) => {
   try {
-    const backup = db.exportData();
+    const { accountId } = getAccountFromReq(req);
+    const backup = db.exportData(accountId);
     res.json({ success: true, backup });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -350,6 +377,132 @@ app.post('/api/backup/import', (req, res) => {
     const overwrite = req.body.overwrite === true;
     const result = db.importData(backup, overwrite);
     res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Limiteur de débit en mémoire pour les endpoints d'authentification (protection brute-force)
+const authAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkAuthRateLimit(req: express.Request, res: express.Response, maxAttempts = 20, windowMs = 60000): boolean {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
+  const now = Date.now();
+  const entry = authAttempts.get(ip);
+  if (entry) {
+    if (now > entry.resetAt) {
+      authAttempts.set(ip, { count: 1, resetAt: now + windowMs });
+    } else {
+      entry.count++;
+      if (entry.count > maxAttempts) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.setHeader('Retry-After', retryAfter);
+        res.status(429).json({ success: false, error: `Trop de tentatives d'authentification. Réessayez dans ${retryAfter}s.` });
+        return false;
+      }
+    }
+  } else {
+    authAttempts.set(ip, { count: 1, resetAt: now + windowMs });
+  }
+  if (authAttempts.size > 2000) {
+    for (const [key, val] of authAttempts.entries()) {
+      if (now > val.resetAt) authAttempts.delete(key);
+    }
+  }
+  return true;
+}
+
+// --- COMPTES UTILISATEUR & SYNCHRONISATION MULTI-ÉCRANS ---
+app.post('/api/accounts/register', (req, res) => {
+  try {
+    if (!checkAuthRateLimit(req, res)) return;
+    const { username, password, email, deviceName } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Nom d\'utilisateur et mot de passe requis' });
+    }
+    const result = db.createAccount(username, password, email, deviceName);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/accounts/login', (req, res) => {
+  try {
+    if (!checkAuthRateLimit(req, res)) return;
+    const { username, password, deviceName } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Identifiants requis' });
+    }
+    const account = db.verifyAccount(username, password);
+    if (!account) {
+      return res.status(401).json({ success: false, error: 'Nom d\'utilisateur ou mot de passe incorrect' });
+    }
+    const session = db.createAccountSession(account.id, deviceName || 'Stremo Web');
+    res.json({
+      success: true,
+      account: { id: account.id, username: account.username, email: account.email, createdAt: account.createdAt },
+      token: session.token,
+      expiresAt: session.expiresAt,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/accounts/me', (req, res) => {
+  try {
+    const { account, accountId } = getAccountFromReq(req);
+    if (!account || !accountId) {
+      return res.status(401).json({ success: false, error: 'Session non valide ou expirée' });
+    }
+    const sessions = db.getAccountSessions(accountId);
+    const profiles = db.getProfiles(accountId);
+    res.json({
+      success: true,
+      account,
+      sessions,
+      profiles,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/accounts/logout', (req, res) => {
+  try {
+    const { token } = getAccountFromReq(req);
+    const targetToken = req.body?.token || token;
+    if (targetToken) {
+      db.deleteAccountSession(targetToken);
+    }
+    res.json({ success: true, message: 'Déconnexion réussie' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/accounts/claim', (req, res) => {
+  try {
+    const { accountId } = getAccountFromReq(req);
+    if (!accountId) {
+      return res.status(401).json({ success: false, error: 'Authentification requise pour réclamer les données' });
+    }
+    const claimed = db.claimLocalData(accountId);
+    res.json({ success: true, ...claimed });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/accounts/sync', (req, res) => {
+  try {
+    const { accountId } = getAccountFromReq(req);
+    if (!accountId) {
+      return res.status(401).json({ success: false, error: 'Authentification requise pour la synchronisation' });
+    }
+    const synced = db.syncAccountData(accountId, req.body || {});
+    res.json({ success: true, ...synced });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -537,7 +690,8 @@ app.post('/api/debrid/status', async (req, res) => {
 app.get('/api/catalogs', async (req, res) => {
   try {
     const { type = 'movie', genre, search, skip } = req.query as Record<string, string>;
-    const addons = db.getAddons().filter(a => a.enabled);
+    const { accountId } = getAccountFromReq(req);
+    const addons = db.getAddons(accountId).filter(a => a.enabled);
     const extra: Record<string, string> = {};
     if (genre) extra.genre = genre;
     if (search) extra.search = search;
@@ -578,7 +732,8 @@ app.get('/api/catalogs', async (req, res) => {
 // 2. Meta detail (premier add-on qui répond)
 app.get('/api/meta/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const addons = db.getAddons().filter(a => a.enabled);
+  const { accountId } = getAccountFromReq(req);
+  const addons = db.getAddons(accountId).filter(a => a.enabled);
   for (const addon of addons) {
     try {
       const meta = await new AddonClient(addon.url, db).getMeta(type, id);
@@ -591,7 +746,8 @@ app.get('/api/meta/:type/:id', async (req, res) => {
 // 3. Streams (en parallèle)
 app.get('/api/streams/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const addons = db.getAddons().filter(a => a.enabled);
+  const { accountId } = getAccountFromReq(req);
+  const addons = db.getAddons(accountId).filter(a => a.enabled);
   const results = await Promise.allSettled(addons.map(async addon => {
     const streams = await new AddonClient(addon.url, db).getStreams(type, id);
     return streams.map(s => ({
@@ -606,7 +762,8 @@ app.get('/api/streams/:type/:id', async (req, res) => {
 // 3b. Sous-titres (OpenSubtitles v3 etc.)
 app.get('/api/subtitles/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const addons = db.getAddons().filter(a => a.enabled);
+  const { accountId } = getAccountFromReq(req);
+  const addons = db.getAddons(accountId).filter(a => a.enabled);
   const results = await Promise.allSettled(addons.map(async addon => {
     const subs = await new AddonClient(addon.url, db).getSubtitles(type, id);
     return subs.map(s => ({ ...s, addonName: addon.name }));

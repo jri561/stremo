@@ -12,6 +12,7 @@ import {
   Check,
   Sparkles,
   Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import type { Profile } from '../api';
 import { getProfileTheme } from '../profileCustomization';
@@ -46,6 +47,7 @@ interface Props {
     }
   ) => Promise<void>;
   onOpenSelector: () => void;
+  onOpenAccount?: () => void;
   onOpenSettings?: () => void;
   onOpenStats?: () => void;
   onOpenTrakt?: () => void;
@@ -62,6 +64,7 @@ export const ProfileMenu: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onOpenSelector,
+  onOpenAccount,
   onOpenSettings,
   onOpenStats,
   onOpenTrakt,
@@ -193,6 +196,20 @@ export const ProfileMenu: React.FC<Props> = ({
           })}
 
           <div className="pt-2 border-t border-white/5 space-y-1">
+            {onOpenAccount && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenAccount();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-indigo-300 hover:text-white hover:bg-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                Mon Compte & Cloud Sync
+              </button>
+            )}
+
             {onOpenSettings && (
               <button
                 type="button"

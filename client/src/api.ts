@@ -1,12 +1,15 @@
 const API_BASE = '/api';
 const KEY_STORAGE = 'stremo_access_key';
+const ACCOUNT_TOKEN_STORAGE = 'stremo_account_token';
 
-/** fetch qui ajoute la clé d'accès (si configurée) et signale un refus 401 à l'interface. */
+/** fetch qui ajoute la clé d'accès (si configurée) et le jeton de compte et signale un refus 401 à l'interface. */
 const nativeFetch = typeof window !== 'undefined' ? window.fetch.bind(window) : globalThis.fetch.bind(globalThis);
 async function fetch(input: string, init: RequestInit = {}): Promise<Response> {
   const key = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY_STORAGE) : null;
+  const accountToken = typeof localStorage !== 'undefined' ? localStorage.getItem(ACCOUNT_TOKEN_STORAGE) : null;
   const headers = new Headers(init.headers);
   if (key) headers.set('x-stremo-key', key);
+  if (accountToken) headers.set('x-account-token', accountToken);
   const res = await nativeFetch(input, { ...init, headers });
   if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new Event('stremo-auth-required'));
   return res;
@@ -45,9 +48,10 @@ export interface AddonInfo {
     resources: string[];
   };
 }
-
+ 
 export interface Profile {
   id: string;
+  accountId?: string | null;
   name: string;
   avatar: string;
   color?: string;
@@ -56,6 +60,21 @@ export interface Profile {
   preferredAudioLanguage?: string;
   preferredSubtitleLanguage?: string;
   subtitleMode?: string;
+}
+
+export interface Account {
+  id: string;
+  username: string;
+  email?: string;
+  createdAt: string;
+}
+
+export interface AccountSession {
+  token: string;
+  accountId: string;
+  deviceName?: string;
+  expiresAt: number;
+  createdAt: string;
 }
 
 export interface WatchProgress {
@@ -695,6 +714,93 @@ export const api = {
     } catch {
       return false;
     }
+  },
+
+  // --- Gestion de Compte & Synchronisation ---
+  account: {
+    getToken(): string | null {
+      if (typeof localStorage === 'undefined') return null;
+      return localStorage.getItem(ACCOUNT_TOKEN_STORAGE);
+    },
+    setToken(token: string | null) {
+      if (typeof localStorage === 'undefined') return;
+      if (token) {
+        localStorage.setItem(ACCOUNT_TOKEN_STORAGE, token);
+      } else {
+        localStorage.removeItem(ACCOUNT_TOKEN_STORAGE);
+      }
+      window.dispatchEvent(new CustomEvent('stremo-account-changed'));
+    },
+    async register(username: string, password: string, email?: string, deviceName?: string) {
+      const res = await fetch(`${API_BASE}/accounts/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, email, deviceName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Erreur lors de l\'inscription');
+      if (typeof localStorage !== 'undefined') localStorage.setItem(ACCOUNT_TOKEN_STORAGE, data.token);
+      window.dispatchEvent(new CustomEvent('stremo-account-changed'));
+      return data;
+    },
+    async login(username: string, password: string, deviceName?: string) {
+      const res = await fetch(`${API_BASE}/accounts/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, deviceName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Nom d\'utilisateur ou mot de passe incorrect');
+      if (typeof localStorage !== 'undefined') localStorage.setItem(ACCOUNT_TOKEN_STORAGE, data.token);
+      window.dispatchEvent(new CustomEvent('stremo-account-changed'));
+      return data;
+    },
+    async getMe(): Promise<{ account: Account; sessions: AccountSession[]; profiles: Profile[] } | null> {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem(ACCOUNT_TOKEN_STORAGE) : null;
+      if (!token) return null;
+      try {
+        const res = await fetch(`${API_BASE}/accounts/me`);
+        if (!res.ok) {
+          if (res.status === 401 && typeof localStorage !== 'undefined') {
+            localStorage.removeItem(ACCOUNT_TOKEN_STORAGE);
+            window.dispatchEvent(new CustomEvent('stremo-account-changed'));
+          }
+          return null;
+        }
+        const data = await res.json();
+        return data.success ? data : null;
+      } catch {
+        return null;
+      }
+    },
+    async logout() {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem(ACCOUNT_TOKEN_STORAGE) : null;
+      if (token) {
+        try {
+          await fetch(`${API_BASE}/accounts/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          });
+        } catch (_) {}
+      }
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(ACCOUNT_TOKEN_STORAGE);
+      window.dispatchEvent(new CustomEvent('stremo-account-changed'));
+    },
+    async claimLocalData() {
+      const res = await fetch(`${API_BASE}/accounts/claim`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Erreur lors de la réclamation');
+      return data;
+    },
+    async sync(payload: any) {
+      const res = await fetch(`${API_BASE}/accounts/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return res.json();
+    },
   },
 };
 
