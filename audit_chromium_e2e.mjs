@@ -244,6 +244,46 @@ async function runAudit() {
           });
           await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '06_media_modal_streams.png') });
 
+          // Test 7b: Casting et Filmographie PersonModal
+          const directorBtn = await page.$('button[title*="filmographie"], button:has-text("• De")');
+          const castTabBtn = await page.$('button:has-text("Casting"), button:has-text("Équipe")');
+
+          if (directorBtn) {
+            await directorBtn.click();
+            await page.waitForSelector('div[aria-label*="Filmographie"]', { timeout: 4000 }).catch(() => null);
+            await page.waitForTimeout(800);
+            const personModal = await page.$('div[aria-label*="Filmographie"]');
+            if (personModal) {
+              const personName = await page.$eval('div[aria-label*="Filmographie"] h2', el => el.textContent?.trim()).catch(() => 'Artiste');
+              logStep('7b. Fiche Filmographie Artiste (PersonModal)', 'PASS', { person: personName, type: 'Réalisateur' });
+              await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '06b_person_filmography.png') });
+              // Fermer PersonModal
+              await page.keyboard.press('Escape');
+              await page.waitForTimeout(400);
+            }
+          } else if (castTabBtn) {
+            await castTabBtn.click();
+            await page.waitForTimeout(600);
+            const firstActorBtn = await page.$('div[role="dialog"] button:has(img)');
+            if (firstActorBtn) {
+              await firstActorBtn.click();
+              await page.waitForSelector('div[aria-label*="Filmographie"]', { timeout: 4000 }).catch(() => null);
+              await page.waitForTimeout(800);
+              const personModal = await page.$('div[aria-label*="Filmographie"]');
+              if (personModal) {
+                const personName = await page.$eval('div[aria-label*="Filmographie"] h2', el => el.textContent?.trim()).catch(() => 'Artiste');
+                logStep('7b. Fiche Filmographie Artiste (PersonModal)', 'PASS', { person: personName, type: 'Acteur' });
+                await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '06b_person_filmography.png') });
+                // Fermer PersonModal
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(400);
+              }
+            }
+            const sourcesTabBtn = await page.$('button:has-text("Sources")');
+            if (sourcesTabBtn) await sourcesTabBtn.click();
+            await page.waitForTimeout(400);
+          }
+
           // -------------------------------------------------------------
           // TEST 8: Lecteur Vidéo & Commandes Saut de Génériques / Mode Nuit
           // -------------------------------------------------------------
@@ -293,6 +333,34 @@ async function runAudit() {
               logStep('8e. Minuteur de sommeil (Sleep Timer)', 'PASS', { optionsCount: sleepOptions.length });
               // Fermer le menu veille
               await sleepTimerBtn.click();
+              await page.waitForTimeout(200);
+            }
+
+            // Format d'image & Égaliseur Vidéo
+            const adjustBtn = await page.$('button[title*="Format d\'image"], button:has-text("Rendu")');
+            if (adjustBtn) {
+              await adjustBtn.click();
+              await page.waitForTimeout(400);
+              const presetBtn = await page.$('button:has-text("Cinéma Sombre"), button:has-text("Standard")');
+              logStep('8g. Égaliseur Vidéo & Format d\'image (Aspect Ratio)', 'PASS', { hasPresets: !!presetBtn });
+              await adjustBtn.click();
+              await page.waitForTimeout(200);
+            }
+
+            // Raccourci A (cycle aspect ratio)
+            await page.keyboard.press('a');
+            await page.waitForTimeout(400);
+
+            // Raccourci B (création de signet) & Menu Signets
+            await page.keyboard.press('b');
+            await page.waitForTimeout(400);
+            const bookmarkBtn = await page.$('button[title*="Signets"], button:has-text("Signets")');
+            if (bookmarkBtn) {
+              await bookmarkBtn.click();
+              await page.waitForTimeout(400);
+              logStep('8h. Signets personnels & Marqueurs de Timeline', 'PASS', { bookmarkMenu: true });
+              await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '07b_video_player_bookmarks.png') });
+              await bookmarkBtn.click();
               await page.waitForTimeout(200);
             }
 

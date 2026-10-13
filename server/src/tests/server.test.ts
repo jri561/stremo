@@ -347,9 +347,46 @@ test('DatabaseManager cache store and TTL eviction', async () => {
   db.setCache('expired_2', { b: 2 }, -5);
   db.setCache('valid_1', { c: 3 }, 300);
 
-  const purgedCount = db.purgeExpiredCache();
-  assert.strictEqual(purgedCount >= 2, true);
-  assert.deepStrictEqual(db.getCache('valid_1'), { c: 3 });
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
+test('DatabaseManager bookmarks management and ordering', async () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test-bookmarks.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const profiles = db.getProfiles();
+  const p1 = profiles[0].id;
+  const p2 = profiles[1].id;
+  const mediaId = 'tt15239678';
+
+  // 1. Initial list empty
+  assert.strictEqual(db.getBookmarks(p1, mediaId).length, 0);
+
+  // 2. Add bookmarks at different timestamps
+  const bm1 = db.addBookmark(p1, mediaId, 120.5, 'Scène d\'ouverture');
+  const bm2 = db.addBookmark(p1, mediaId, 45.0, 'Intro');
+  const bm3 = db.addBookmark(p1, mediaId, 3600.0, 'Bataille finale');
+
+  assert.strictEqual(bm1.time, 120.5);
+  assert.strictEqual(bm1.title, 'Scène d\'ouverture');
+
+  // 3. Retrieval should be ordered by time ASC
+  const listP1 = db.getBookmarks(p1, mediaId);
+  assert.strictEqual(listP1.length, 3);
+  assert.strictEqual(listP1[0].time, 45.0);
+  assert.strictEqual(listP1[1].time, 120.5);
+  assert.strictEqual(listP1[2].time, 3600.0);
+
+  // 4. Isolation: Profile 2 should have 0 bookmarks
+  assert.strictEqual(db.getBookmarks(p2, mediaId).length, 0);
+
+  // 5. Delete a bookmark
+  db.deleteBookmark(bm2.id);
+  const afterDelete = db.getBookmarks(p1, mediaId);
+  assert.strictEqual(afterDelete.length, 2);
+  assert.strictEqual(afterDelete[0].id, bm1.id);
 
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 });
+

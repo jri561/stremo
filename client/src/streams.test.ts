@@ -268,5 +268,24 @@ test('parseStream détecte les liens Magnet P2P et extrait les seeders', async (
   assert.ok(rec.label.includes('VLC'));
 });
 
+test('Calcul de position relative des signets sur la timeline vidéo', () => {
+  const duration = 7200; // 2 heures
+  const bookmarkTime = 1800; // 30 minutes
+  const leftPercent = Math.min(100, Math.max(0, (bookmarkTime / duration) * 100));
+  assert.strictEqual(leftPercent, 25);
 
+  const endBookmark = 7200;
+  assert.strictEqual(Math.min(100, Math.max(0, (endBookmark / duration) * 100)), 100);
 
+  const negativeBookmark = -50;
+  assert.strictEqual(Math.min(100, Math.max(0, (negativeBookmark / duration) * 100)), 0);
+});
+
+test('Formatage des ratios d’aspect et filtres d’égaliseur vidéo', () => {
+  const ratios = ['contain', 'cover', '16/9', '21/9', '4/3'] as const;
+  assert.strictEqual(ratios.length, 5);
+
+  const getFilter = (b: number, c: number, s: number) => `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+  assert.strictEqual(getFilter(100, 100, 100), 'brightness(100%) contrast(100%) saturate(100%)');
+  assert.strictEqual(getFilter(90, 118, 95), 'brightness(90%) contrast(118%) saturate(95%)');
+});

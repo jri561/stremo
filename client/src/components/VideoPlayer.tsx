@@ -26,8 +26,14 @@ import {
   Trash2,
   FileText,
   Timer,
+  Bookmark,
+  BookmarkPlus,
+  SlidersHorizontal,
+  Sun,
+  Contrast,
+  Sparkles,
 } from 'lucide-react';
-import { api, type StreamSource } from '../api';
+import { api, type StreamSource, type BookmarkItem } from '../api';
 import { getAndroidIntentUrl } from '../players';
 import { createLocalSubtitleTrack, type SubtitleTrack } from '../subtitles';
 import {
@@ -64,6 +70,7 @@ interface Props {
   initialTime?: number;
   nextEpisode?: NextEpisodeInfo | null;
   profileId?: string;
+  mediaId?: string;
   mediaInfo?: TraktMediaInfo;
   availableStreams?: StreamSource[];
   isSeries?: boolean;
@@ -81,6 +88,7 @@ export const VideoPlayer: React.FC<Props> = ({
   initialTime = 0,
   nextEpisode,
   profileId,
+  mediaId,
   mediaInfo,
   availableStreams,
   isSeries,
@@ -301,6 +309,115 @@ export const VideoPlayer: React.FC<Props> = ({
 
     return () => clearInterval(interval);
   }, [sleepTimerMinutes]);
+
+  // Format d'image & Égaliseur Vidéo (Aspect Ratio & Image Tuning)
+  type AspectRatioMode = 'contain' | 'cover' | '16/9' | '21/9' | '4/3';
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioMode>(() => {
+    return (localStorage.getItem('stremo_aspect_ratio') as AspectRatioMode) || 'contain';
+  });
+  const [brightness, setBrightness] = useState<number>(() => {
+    const v = localStorage.getItem('stremo_video_brightness');
+    return v ? Number(v) : 100;
+  });
+  const [contrast, setContrast] = useState<number>(() => {
+    const v = localStorage.getItem('stremo_video_contrast');
+    return v ? Number(v) : 100;
+  });
+  const [saturation, setSaturation] = useState<number>(() => {
+    const v = localStorage.getItem('stremo_video_saturation');
+    return v ? Number(v) : 100;
+  });
+  const [showAdjustMenu, setShowAdjustMenu] = useState(false);
+
+  const aspectRatios: { id: AspectRatioMode; label: string }[] = [
+    { id: 'contain', label: 'Original (Ajusté)' },
+    { id: 'cover', label: 'Remplir / Zoom (Plein écran)' },
+    { id: '16/9', label: '16:9 (Panoramique)' },
+    { id: '21/9', label: '21:9 (Cinéma Anamorphique)' },
+    { id: '4/3', label: '4:3 (Rétro / Classique)' },
+  ];
+
+  const handleCycleAspectRatio = () => {
+    const currentIndex = aspectRatios.findIndex((r) => r.id === aspectRatio);
+    const next = aspectRatios[(currentIndex + 1) % aspectRatios.length];
+    setAspectRatio(next.id);
+    localStorage.setItem('stremo_aspect_ratio', next.id);
+    triggerOSD(`Format : ${next.label}`, '📐');
+  };
+
+  const handleSetAspectRatio = (mode: AspectRatioMode) => {
+    setAspectRatio(mode);
+    localStorage.setItem('stremo_aspect_ratio', mode);
+    const found = aspectRatios.find((r) => r.id === mode);
+    triggerOSD(`Format : ${found?.label || mode}`, '📐');
+  };
+
+  const handleApplyPreset = (b: number, c: number, s: number, name: string) => {
+    setBrightness(b);
+    setContrast(c);
+    setSaturation(s);
+    localStorage.setItem('stremo_video_brightness', String(b));
+    localStorage.setItem('stremo_video_contrast', String(c));
+    localStorage.setItem('stremo_video_saturation', String(s));
+    triggerOSD(`Rendu : ${name}`, '🎨');
+  };
+
+  const handleResetAdjustments = () => {
+    handleApplyPreset(100, 100, 100, 'Standard');
+  };
+
+  // Signets & Marqueurs de Timeline (Personal Bookmarks)
+  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+  const [showBookmarkMenu, setShowBookmarkMenu] = useState(false);
+  const [bookmarkCustomTitle, setBookmarkCustomTitle] = useState('');
+
+  useEffect(() => {
+    if (!profileId || !mediaId) return;
+    api.getBookmarks(profileId, mediaId)
+      .then((items) => setBookmarks(items))
+      .catch((err) => console.warn('Erreur chargement signets:', err));
+  }, [profileId, mediaId]);
+
+  const handleAddBookmark = async (customLabel?: string) => {
+    if (!profileId || !mediaId) {
+      triggerOSD('Profil requis pour les signets', '⚠️');
+      return;
+    }
+    const curTime = Math.round(videoRef.current?.currentTime || currentTime);
+    const titleToUse = customLabel?.trim() || bookmarkCustomTitle.trim() || `Signet @ ${formatTime(curTime)}`;
+    try {
+      const created = await api.addBookmark(profileId, mediaId, curTime, titleToUse);
+      if (created) {
+        setBookmarks((prev) => [...prev.filter((b) => b.id !== created.id), created].sort((a, b) => a.time - b.time));
+        setBookmarkCustomTitle('');
+        triggerOSD(`Signet : ${titleToUse}`, '🔖');
+      }
+    } catch (err) {
+      console.error('Erreur ajout signet:', err);
+      triggerOSD('Erreur ajout signet', '⚠️');
+    }
+  };
+
+  const handleDeleteBookmark = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const ok = await api.deleteBookmark(id);
+      if (ok) {
+        setBookmarks((prev) => prev.filter((b) => b.id !== id));
+        triggerOSD('Signet supprimé', '🗑️');
+      }
+    } catch (err) {
+      console.error('Erreur suppression signet:', err);
+    }
+  };
+
+  const handleJumpToBookmark = (time: number, label?: string) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+    triggerOSD(`Saut : ${label || formatTime(time)}`, '🔖');
+  };
 
   const triggerPlaybackError = (errorMessage: string) => {
     setBuffering(false);
@@ -887,6 +1004,12 @@ export const VideoPlayer: React.FC<Props> = ({
       } else if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
         handleCycleSleepTimer();
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        handleCycleAspectRatio();
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        handleAddBookmark();
       } else if (e.key === 'Escape') {
         if (!document.fullscreenElement) {
           onClose();
@@ -896,7 +1019,7 @@ export const VideoPlayer: React.FC<Props> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, duration]);
+  }, [isPlaying, duration, aspectRatio, bookmarks, profileId, mediaId, currentTime]);
 
   return (
     <div
@@ -915,7 +1038,20 @@ export const VideoPlayer: React.FC<Props> = ({
         onWaiting={() => setBuffering(true)}
         onPlaying={() => setBuffering(false)}
         onTimeUpdate={handleTimeUpdate}
-        className="w-full h-full object-contain cursor-pointer"
+        className={`cursor-pointer transition-[filter] duration-200 ${
+          aspectRatio === 'cover'
+            ? 'w-full h-full object-cover'
+            : aspectRatio === '16/9'
+            ? 'w-full max-h-full aspect-video object-cover'
+            : aspectRatio === '21/9'
+            ? 'w-full max-h-full aspect-[21/9] object-cover'
+            : aspectRatio === '4/3'
+            ? 'h-full max-w-full aspect-[4/3] object-contain'
+            : 'w-full h-full object-contain'
+        }`}
+        style={{
+          filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`,
+        }}
         onClick={togglePlay}
         crossOrigin="anonymous"
         playsInline
@@ -1185,18 +1321,37 @@ export const VideoPlayer: React.FC<Props> = ({
 
         {/* Bottom Control Bar */}
         <div className="space-y-3 pointer-events-auto max-w-4xl mx-auto w-full">
-          {/* Progress Slider */}
+          {/* Progress Slider avec Marqueurs de Signets */}
           <div className="flex items-center gap-3 text-xs font-medium text-slate-300">
-            <span>{formatTime(currentTime)}</span>
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              value={currentTime}
-              onChange={handleSeek}
-              className="flex-1 h-1 bg-white/20 hover:bg-white/30 rounded-lg appearance-none cursor-pointer accent-indigo-500 transition"
-            />
-            <span>{formatTime(duration)}</span>
+            <span className="w-12 text-right">{formatTime(currentTime)}</span>
+            <div className="relative flex-1 flex items-center group py-2">
+              <input
+                type="range"
+                min={0}
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="w-full h-1.5 bg-white/20 hover:bg-white/30 rounded-lg appearance-none cursor-pointer accent-indigo-500 transition"
+              />
+              {/* Marqueurs visuels de signets sur la barre */}
+              {duration > 0 &&
+                bookmarks.map((bm) => {
+                  const leftPct = Math.min(100, Math.max(0, (bm.time / duration) * 100));
+                  return (
+                    <button
+                      key={bm.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleJumpToBookmark(bm.time, bm.title);
+                      }}
+                      className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 -ml-1.25 rounded-full bg-amber-400 hover:bg-amber-300 border border-black shadow-md cursor-pointer transition transform hover:scale-175 z-20"
+                      style={{ left: `${leftPct}%` }}
+                      title={`${bm.title || 'Signet'} (${formatTime(bm.time)})`}
+                    />
+                  );
+                })}
+            </div>
+            <span className="w-12 text-left">{formatTime(duration)}</span>
           </div>
 
           {/* Action Buttons */}
@@ -1261,14 +1416,286 @@ export const VideoPlayer: React.FC<Props> = ({
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 relative">
+              {/* Signets & Marqueurs personnels */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowBookmarkMenu(!showBookmarkMenu);
+                    setShowAdjustMenu(false);
+                    setShowSleepMenu(false);
+                    setShowSpeedMenu(false);
+                    setShowSubMenu(false);
+                    setShowSkipMenu(false);
+                    setShowStreamSelector(false);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                    bookmarks.length > 0 || showBookmarkMenu
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Signets & Marqueurs de scène (Touche B)"
+                >
+                  <Bookmark className={`w-4 h-4 ${bookmarks.length > 0 ? 'fill-amber-400/40 text-amber-400' : ''}`} />
+                  <span className="hidden sm:inline">
+                    {bookmarks.length > 0 ? `Signets (${bookmarks.length})` : 'Signets'}
+                  </span>
+                </button>
+
+                {showBookmarkMenu && (
+                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                    <div className="flex items-center justify-between pb-1 border-b border-white/5">
+                      <div className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
+                        <Bookmark className="w-3 h-3 text-amber-400" /> Signets & Marqueurs
+                      </div>
+                      <span className="text-[10px] font-mono text-amber-400">Touche B</span>
+                    </div>
+
+                    {/* Bouton rapide d'ajout au temps courant */}
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => handleAddBookmark()}
+                        className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
+                      >
+                        <BookmarkPlus className="w-4 h-4" />
+                        <span>Marquer ce moment ({formatTime(currentTime)})</span>
+                      </button>
+
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Titre ou note personnalisée..."
+                          value={bookmarkCustomTitle}
+                          onChange={(e) => setBookmarkCustomTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddBookmark();
+                          }}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        />
+                        {bookmarkCustomTitle && (
+                          <button
+                            onClick={() => handleAddBookmark()}
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition cursor-pointer"
+                          >
+                            Ajouter
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Liste des signets enregistrés */}
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-black uppercase text-slate-400 flex items-center justify-between">
+                        <span>Marqueurs enregistrés</span>
+                        <span className="text-amber-400">{bookmarks.length}</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                        {bookmarks.length === 0 ? (
+                          <div className="p-3 text-center rounded-xl bg-white/5 text-slate-400 text-xs">
+                            Aucun signet. Appuyez sur <kbd className="px-1 py-0.5 rounded bg-white/10 text-amber-300 font-mono text-[10px]">B</kbd> pour mémoriser un passage culte.
+                          </div>
+                        ) : (
+                          bookmarks.map((bm) => (
+                            <div
+                              key={bm.id}
+                              className="w-full p-2 rounded-xl bg-white/5 hover:bg-white/10 transition flex items-center justify-between gap-2 group cursor-pointer"
+                              onClick={() => handleJumpToBookmark(bm.time, bm.title)}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-xs font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                                  {formatTime(bm.time)}
+                                </span>
+                                <span className="text-xs text-slate-200 truncate font-medium">
+                                  {bm.title || 'Signet'}
+                                </span>
+                              </div>
+                              <button
+                                onClick={(e) => handleDeleteBookmark(bm.id, e)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition opacity-80 group-hover:opacity-100"
+                                title="Supprimer ce signet"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Format d'image & Égaliseur Vidéo */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowAdjustMenu(!showAdjustMenu);
+                    setShowBookmarkMenu(false);
+                    setShowSleepMenu(false);
+                    setShowSpeedMenu(false);
+                    setShowSubMenu(false);
+                    setShowSkipMenu(false);
+                    setShowStreamSelector(false);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                    aspectRatio !== 'contain' || brightness !== 100 || contrast !== 100 || saturation !== 100 || showAdjustMenu
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Format d'image & Égaliseur Vidéo (Touche A)"
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  <span className="hidden md:inline">Rendu</span>
+                </button>
+
+                {showAdjustMenu && (
+                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                    {/* Ratio d'aspect */}
+                    <div>
+                      <div className="flex items-center justify-between pb-1 border-b border-white/5 mb-2">
+                        <span className="text-[10px] font-black uppercase text-slate-400">
+                          Format d'image
+                        </span>
+                        <span className="text-[10px] font-mono text-indigo-400">Touche A</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {aspectRatios.map((r) => (
+                          <button
+                            key={r.id}
+                            onClick={() => handleSetAspectRatio(r.id)}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition text-left flex items-center justify-between cursor-pointer ${
+                              aspectRatio === r.id
+                                ? 'bg-indigo-600 text-white font-bold'
+                                : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                            }`}
+                          >
+                            <span className="truncate">{r.label}</span>
+                            {aspectRatio === r.id && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Préréglages d'image */}
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5 flex items-center justify-between">
+                        <span>Profils d'image</span>
+                        <Sparkles className="w-3 h-3 text-indigo-400" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        <button
+                          onClick={() => handleApplyPreset(100, 100, 100, 'Standard')}
+                          className="py-1.5 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-left font-medium transition cursor-pointer"
+                        >
+                          Standard (Défaut)
+                        </button>
+                        <button
+                          onClick={() => handleApplyPreset(90, 118, 95, 'Cinéma')}
+                          className="py-1.5 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-indigo-300 text-left font-medium transition cursor-pointer"
+                        >
+                          🎬 Cinéma Sombre
+                        </button>
+                        <button
+                          onClick={() => handleApplyPreset(105, 112, 135, 'Éclatant')}
+                          className="py-1.5 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-amber-300 text-left font-medium transition cursor-pointer"
+                        >
+                          ✨ Éclatant (Vivid)
+                        </button>
+                        <button
+                          onClick={() => handleApplyPreset(100, 125, 0, 'Noir & Blanc')}
+                          className="py-1.5 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-left font-medium transition cursor-pointer"
+                        >
+                          📽️ Noir & Blanc
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Égaliseur manuel */}
+                    <div className="pt-2 border-t border-white/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Égaliseur d'image</span>
+                        <button
+                          onClick={handleResetAdjustments}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold cursor-pointer"
+                        >
+                          Réinitialiser
+                        </button>
+                      </div>
+
+                      {/* Luminosité */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="flex items-center gap-1"><Sun className="w-3 h-3" /> Luminosité</span>
+                          <span className="font-mono text-indigo-300 font-bold">{brightness}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={50}
+                          max={150}
+                          value={brightness}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setBrightness(v);
+                            localStorage.setItem('stremo_video_brightness', String(v));
+                          }}
+                          className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                      </div>
+
+                      {/* Contraste */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="flex items-center gap-1"><Contrast className="w-3 h-3" /> Contraste</span>
+                          <span className="font-mono text-indigo-300 font-bold">{contrast}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={50}
+                          max={150}
+                          value={contrast}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setContrast(v);
+                            localStorage.setItem('stremo_video_contrast', String(v));
+                          }}
+                          className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                      </div>
+
+                      {/* Saturation */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="flex items-center gap-1">🎨 Saturation</span>
+                          <span className="font-mono text-indigo-300 font-bold">{saturation}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={200}
+                          value={saturation}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setSaturation(v);
+                            localStorage.setItem('stremo_video_saturation', String(v));
+                          }}
+                          className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Minuteur de mise en veille (Sleep Timer) */}
               <div className="relative">
                 <button
                   onClick={() => {
                     setShowSleepMenu(!showSleepMenu);
+                    setShowBookmarkMenu(false);
+                    setShowAdjustMenu(false);
                     setShowSpeedMenu(false);
                     setShowSubMenu(false);
                     setShowSkipMenu(false);
+                    setShowStreamSelector(false);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     sleepTimerMinutes !== null

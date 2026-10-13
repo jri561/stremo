@@ -580,7 +580,48 @@ export const api = {
       return [];
     }
   },
+  getBookmarks: async (profileId: string, mediaId: string): Promise<BookmarkItem[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/bookmarks/${encodeURIComponent(profileId)}/${encodeURIComponent(mediaId)}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.items || [];
+    } catch {
+      return [];
+    }
+  },
+  addBookmark: async (profileId: string, mediaId: string, time: number, title?: string): Promise<BookmarkItem | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/bookmarks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId, mediaId, time, title }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.bookmark || null;
+    } catch {
+      return null;
+    }
+  },
+  deleteBookmark: async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
 };
+
+export interface BookmarkItem {
+  id: string;
+  profileId: string;
+  mediaId: string;
+  time: number;
+  title?: string;
+  createdAt: string;
+}
 
 export interface LanDevice {
   deviceId: string;

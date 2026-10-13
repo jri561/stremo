@@ -101,6 +101,15 @@ export interface SyncChannel {
   updatedAt: string;
 }
 
+export interface BookmarkItem {
+  id: string;
+  profileId: string;
+  mediaId: string;
+  time: number;
+  title?: string;
+  createdAt: string;
+}
+
 export class DatabaseManager {
   private db: DatabaseSync;
 
@@ -194,6 +203,16 @@ export class DatabaseManager {
         expiresAt INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache_store(expiresAt);
+
+      CREATE TABLE IF NOT EXISTS bookmarks (
+        id TEXT PRIMARY KEY,
+        profileId TEXT NOT NULL,
+        mediaId TEXT NOT NULL,
+        time REAL NOT NULL,
+        title TEXT,
+        createdAt TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_profile_media ON bookmarks(profileId, mediaId);
     `);
 
     // Migrations idempotentes pour bases SQLite existantes
@@ -792,5 +811,30 @@ export class DatabaseManager {
     const now = Date.now();
     const result = this.db.prepare('DELETE FROM cache_store WHERE expiresAt < ?').run(now);
     return Number((result as any)?.changes || 0);
+  }
+
+  // --- Signets / Bookmarks Personnalisés ---
+  getBookmarks(profileId: string, mediaId: string): BookmarkItem[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM bookmarks 
+      WHERE profileId = ? AND mediaId = ? 
+      ORDER BY time ASC
+    `).all(profileId, mediaId) as unknown as BookmarkItem[];
+    return rows;
+  }
+
+  addBookmark(profileId: string, mediaId: string, time: number, title?: string): BookmarkItem {
+    const id = `bm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const createdAt = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO bookmarks (id, profileId, mediaId, time, title, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, profileId, mediaId, time, title || null, createdAt);
+
+    return { id, profileId, mediaId, time, title, createdAt };
+  }
+
+  deleteBookmark(id: string): void {
+    this.db.prepare('DELETE FROM bookmarks WHERE id = ?').run(id);
   }
 }

@@ -183,6 +183,39 @@ app.delete('/api/library/:profileId/:mediaId', (req, res) => {
   }
 });
 
+// --- SIGNETS / BOOKMARKS PERSONNALISÉS ---
+app.get('/api/bookmarks/:profileId/:mediaId', (req, res) => {
+  try {
+    const { profileId, mediaId } = req.params;
+    const items = db.getBookmarks(profileId, mediaId);
+    res.json({ success: true, items });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/bookmarks', (req, res) => {
+  try {
+    const { profileId, mediaId, time, title } = req.body;
+    if (!profileId || !mediaId || typeof time !== 'number') {
+      return res.status(400).json({ success: false, error: 'Champs profileId, mediaId et time requis' });
+    }
+    const bookmark = db.addBookmark(profileId, mediaId, time, title);
+    res.json({ success: true, bookmark });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/bookmarks/:id', (req, res) => {
+  try {
+    db.deleteBookmark(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- ADDONS ---
 app.get('/api/addons', async (req, res) => {
   try {

@@ -174,6 +174,18 @@ flowchart LR
    - ✅ Détection des flux `magnet:`, comptage des seeders (`👤 87 seeders`), badge `🧲 P2P Torrent`, bouton « Copier le lien magnet » et routage externe vers VLC / MPV.
 16. **Packaging Desktop Natif & Mode Fenêtre Dédié** :
    - ✅ Script `npm run desktop` avec accélération GPU Vaapi, raccourci système `stremo.desktop`, et structure Electron (`electron/main.cjs`).
+17. **Égaliseur d'Image Vidéo & Ratios d'Aspect Dynamiques** :
+   - ✅ 5 ratios d'aspect commutables (`contain`, `cover`, `16/9`, `21/9`, `4/3`), raccourci clavier `A` et affichage OSD HUD centré.
+   - ✅ Égaliseur d'image GPU : réglage temps réel de la Luminosité, Contraste et Saturation (0% à 200%).
+   - ✅ 4 profils cinéma instantanés : Standard, Cinéma Sombre, Éclatant (Vivid), Noir & Blanc Rétro.
+18. **Signets Personnels & Marqueurs Interactifs de Timeline** :
+   - ✅ Mémorisation instantanée par touche `B` ou via l'interface avec titre personnalisé.
+   - ✅ Marqueurs ambrés interactifs positionnés fidèlement sur la barre de progression avec saut instantané.
+   - ✅ Tiroir de consultation et suppression des signets avec persistance SQLite étanche par profil.
+19. **Fiche Artiste & Filmographie Complète (`PersonModal`)** :
+   - ✅ Navigation fluide par acteur ou réalisateur depuis la fiche média.
+   - ✅ Exploration et regroupement automatique des œuvres associées dans les catalogues.
+   - ✅ Lancement et ouverture directe des films et séries de la filmographie sans quitter le contexte.
 
 ### 📍 Phase 3 : Streaming Torrent In-Browser & Transcodage Optionnel (Futur)
 1. **Streaming Torrent WebTorrent Embarqué dans le Navigateur** :

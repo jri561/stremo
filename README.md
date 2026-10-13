@@ -136,7 +136,23 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Fondu audio progressif (Audio Fade-out)** sur les 5 dernières secondes avant l'arrêt pour un endormissement sans coupure brutale.
    - **OSD HUD (On-Screen Display)** : badge éphémère haute élégance au centre de l'écran affichant en temps réel les changements de volume, vitesse, décalage temporel (`+10s`/`-10s`), mode nuit et état du minuteur.
 
-15. **Application PWA & Sécurité Renforcée** :
+15. **Égaliseur d'Image Vidéo & Ratios d'Aspect Dynamiques** :
+   - **5 formats d'image au choix** : Original ajusté (`contain`), Zoom plein écran sans bandes noires (`cover`), 16:9 Panoramique, 21:9 Cinéma Anamorphique (Cinemascope 2.39:1) et 4:3 Rétro. Raccourci clavier direct `A` avec retour OSD HUD.
+   - **Égaliseur d'image GPU à accélération matérielle** : réglage en temps réel de la Luminosité (50%-150%), du Contraste (50%-150%) et de la Saturation des couleurs (0% N&B à 200% éclatant).
+   - **4 Préréglages cinéma instantanés** : `Standard`, `🎬 Cinéma Sombre`, `✨ Éclatant (Vivid)`, `📽️ Noir & Blanc Rétro`.
+
+16. **Signets Personnels & Marqueurs Interactifs de Timeline** :
+   - **Mémorisation instantanée par raccourci clavier `B`** ou clic sur le bouton Signets avec titre personnalisé.
+   - **Marqueurs visuels ambrés sur la barre de progression** : saut direct d'un clic au moment culte avec tooltip du titre et du timecode précis.
+   - **Tiroir de gestion des signets** : consultation de tous les signets de l'œuvre par profil, horodatage, saut rapide et suppression en 1-clic.
+   - **Persistance en base de données SQLite** (`bookmarks`) par profil et identifiant média.
+
+17. **Fiche Artiste & Filmographie Complète (`PersonModal`)** :
+   - **Navigation fluide par acteur ou réalisateur** : clic direct sur n'importe quel membre du casting ou sur le réalisateur dans l'en-tête de la fiche média.
+   - **Exploration automatique de la filmographie** : interrogation des catalogues pour regrouper tous les films et séries associés.
+   - **Lancement direct des œuvres** : un clic sur une affiche de la filmographie ouvre immédiatement la fiche et ses flux sans rechargement.
+
+18. **Application PWA & Sécurité Renforcée** :
    - Web App Manifest complet avec icônes adaptatives, affichage `standalone` et installation en 1 clic.
    - **Protection des jetons secrets** : masquage systématique des tokens Debrid et AIOStreams dans l'interface et l'API.
    - **Statut de Compte Debrid** : vérification et affichage en temps réel des jours restants d'abonnement Real-Debrid / Torbox (`/api/debrid/status`).
@@ -167,6 +183,7 @@ stremo/
     ├── src/components/HeroBanner.tsx     # Carrousel d'accueil rotatif immersif
     ├── src/components/CatalogRow.tsx     # Rails horizontaux avec défilement fluide
     ├── src/components/MediaModal.tsx     # Fiche détaillée avec analyse de flux & multi-lecteurs
+    ├── src/components/PersonModal.tsx    # Fiche filmographie artiste (acteur / réalisateur)
     ├── src/components/SkeletonRow.tsx    # Squelettes de chargement à effet shimmer
     ├── src/components/AddonManager.tsx   # Gestionnaire d'add-ons avec cartes enrichies
     ├── src/components/ProfileMenu.tsx    # Menu déroulant de changement de profil

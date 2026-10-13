@@ -1288,6 +1288,7 @@ export function App() {
             setSelectedItem(null);
             setMetaDetail(null);
           }}
+          onSelectMedia={(item) => handleOpenMedia(item)}
           onToggleEpisodeWatched={handleToggleEpisodeWatched}
           onSelectVideo={handleSelectEpisode}
           onSelectPlayer={handleSelectPlayer}
@@ -1429,6 +1430,7 @@ export function App() {
           subtitles={subtitles}
           nextEpisode={nextEpisode}
           profileId={activeProfile?.id}
+          mediaId={selectedVideoId || selectedItem?.id}
           availableStreams={streams}
           isSeries={selectedItem?.type === 'series'}
           onSelectStream={(newStream) => setActivePlayerStream(newStream)}

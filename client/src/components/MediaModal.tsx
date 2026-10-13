@@ -19,10 +19,11 @@ import {
   Download,
   Copy,
 } from 'lucide-react';
-import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress } from '../api';
+import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress, CatalogItem } from '../api';
 import { AVAILABLE_PLAYERS, getAndroidIntentUrl, type PlayerChoice } from '../players';
 import { rankStreams, matchesResolution, getPlayerRecommendation, selectBestStreamForQuickPlay, parseStream, type ResolutionFilter, type ParsedStream } from '../streams';
 import { addDownloadItem, triggerBrowserDownload } from '../downloads';
+import { PersonModal, type PersonInfo } from './PersonModal';
 
 interface Props {
   detail: MetaDetail;
@@ -38,6 +39,7 @@ interface Props {
   onToggleLibrary: () => void;
   onPlayStream: (stream: StreamSource, player?: PlayerChoice) => void;
   onSearchQuery?: (query: string) => void;
+  onSelectMedia?: (item: CatalogItem) => void;
   onToggleEpisodeWatched?: (season: number, episode: number, currentlyWatched: boolean) => void;
   onClose: () => void;
 }
@@ -56,6 +58,7 @@ export const MediaModal: React.FC<Props> = ({
   onToggleLibrary,
   onPlayStream,
   onSearchQuery,
+  onSelectMedia,
   onToggleEpisodeWatched,
   onClose,
 }) => {
@@ -64,6 +67,7 @@ export const MediaModal: React.FC<Props> = ({
   const [onlyDebridCached, setOnlyDebridCached] = useState(false);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const [copiedMagnetUrl, setCopiedMagnetUrl] = useState<string | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<PersonInfo | null>(null);
 
   const handleCopyMagnet = (e: React.MouseEvent, magnetUrl: string) => {
     e.stopPropagation();
@@ -302,12 +306,15 @@ export const MediaModal: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (onSearchQuery && detail.director?.[0]) {
-                        onSearchQuery(detail.director[0]);
+                      if (detail.director?.[0]) {
+                        setSelectedPerson({
+                          name: detail.director[0],
+                          role: 'Réalisateur',
+                        });
                       }
                     }}
                     className="text-slate-400 hover:text-indigo-300 hover:underline hidden sm:inline transition cursor-pointer text-left"
-                    title={`Rechercher les réalisations de ${detail.director[0]}`}
+                    title={`Consulter la filmographie de ${detail.director[0]}`}
                   >
                     • De {detail.director.slice(0, 2).join(', ')}
                   </button>
@@ -823,12 +830,14 @@ export const MediaModal: React.FC<Props> = ({
                   key={idx}
                   type="button"
                   onClick={() => {
-                    if (onSearchQuery) {
-                      onSearchQuery(actor.name);
-                    }
+                    setSelectedPerson({
+                      name: actor.name,
+                      photo: actor.photo || undefined,
+                      role: actor.character || 'Acteur',
+                    });
                   }}
                   className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/8 hover:border-indigo-500/40 flex items-center gap-2.5 text-left transition group cursor-pointer"
-                  title={`Rechercher les œuvres avec ${actor.name}`}
+                  title={`Voir la filmographie de ${actor.name}`}
                 >
                   <div className="w-10 h-10 rounded-full overflow-hidden bg-black/40 shrink-0 border border-white/10 group-hover:border-indigo-400/50 transition">
                     {actor.photo ? (
@@ -885,6 +894,29 @@ export const MediaModal: React.FC<Props> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-300" />
             <span>{downloadToast}</span>
           </div>
+        )}
+
+        {/* Modal Filmographie & Profil d'artiste */}
+        {selectedPerson && (
+          <PersonModal
+            person={selectedPerson}
+            onClose={() => setSelectedPerson(null)}
+            onSelectMedia={(item) => {
+              setSelectedPerson(null);
+              if (onSelectMedia) {
+                onSelectMedia(item);
+              } else if (onSearchQuery) {
+                onSearchQuery(item.name);
+              }
+            }}
+            onSearchGlobal={(query) => {
+              setSelectedPerson(null);
+              onClose();
+              if (onSearchQuery) {
+                onSearchQuery(query);
+              }
+            }}
+          />
         )}
       </div>
     </div>
