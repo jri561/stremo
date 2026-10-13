@@ -35,6 +35,7 @@ import {
   Search,
   Palette,
   Headphones,
+  MoreHorizontal,
 } from 'lucide-react';
 import { api, type StreamSource, type BookmarkItem } from '../api';
 import { getAndroidIntentUrl } from '../players';
@@ -464,6 +465,22 @@ export const VideoPlayer: React.FC<Props> = ({
   const [preferTranscodeAudio, setPreferTranscodeAudio] = useState<boolean>(() => {
     return localStorage.getItem('stremo_prefer_transcode_audio') === 'true';
   });
+
+  // Menu d'options supplémentaires sur petits écrans (Mobile)
+  const [showMoreMobileMenu, setShowMoreMobileMenu] = useState<boolean>(false);
+
+  const closeAllMenus = () => {
+    setShowAudioMenu(false);
+    setShowBookmarkMenu(false);
+    setShowAdjustMenu(false);
+    setShowSleepMenu(false);
+    setShowSpeedMenu(false);
+    setShowSkipMenu(false);
+    setShowSubMenu(false);
+    setShowTorrentFilesMenu(false);
+    setShowStreamSelector(false);
+    setShowMoreMobileMenu(false);
+  };
 
   const startTranscode = (video: HTMLVideoElement, startTime: number, trackIndex?: number) => {
     triedTranscodeRef.current = true;
@@ -1516,21 +1533,21 @@ export const VideoPlayer: React.FC<Props> = ({
 
       {/* Controls Overlay */}
       <div
-        className={`absolute inset-0 flex flex-col justify-between p-6 bg-gradient-to-t from-black/90 via-transparent to-black/70 transition-opacity duration-300 pointer-events-none ${
+        className={`absolute inset-0 flex flex-col justify-between p-3 sm:p-6 bg-gradient-to-t from-black/90 via-transparent to-black/70 transition-opacity duration-300 pointer-events-none ${
           showControls ? 'opacity-100' : 'opacity-0'
         }`}
       >
         {/* Top Header */}
-        <div className="flex items-center justify-between pointer-events-auto">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 pointer-events-auto">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur transition cursor-pointer"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur transition cursor-pointer shrink-0"
               title="Fermer le lecteur (Échap)"
             >
               <X className="w-5 h-5" />
             </button>
-            <h2 className="text-sm md:text-base font-bold text-white drop-shadow line-clamp-1 max-w-xl">
+            <h2 className="text-sm md:text-base font-bold text-white drop-shadow truncate max-w-xl">
               {title}
             </h2>
             {torrentStats && (
@@ -1573,10 +1590,10 @@ export const VideoPlayer: React.FC<Props> = ({
         </div>
 
         {/* Bottom Control Bar */}
-        <div className="space-y-3 pointer-events-auto max-w-4xl mx-auto w-full">
+        <div className="space-y-2 sm:space-y-3 pointer-events-auto max-w-4xl mx-auto w-full relative z-50">
           {/* Progress Slider avec Marqueurs de Signets */}
-          <div className="flex items-center gap-3 text-xs font-medium text-slate-300">
-            <span className="w-12 text-right">{formatTime(currentTime)}</span>
+          <div className="flex items-center gap-2 sm:gap-3 text-xs font-medium text-slate-300">
+            <span className="w-10 sm:w-12 text-right text-[11px] sm:text-xs font-mono">{formatTime(currentTime)}</span>
             <div className="relative flex-1 flex items-center group py-2">
               <input
                 type="range"
@@ -1604,18 +1621,18 @@ export const VideoPlayer: React.FC<Props> = ({
                   );
                 })}
             </div>
-            <span className="w-12 text-left">{formatTime(duration)}</span>
+            <span className="w-10 sm:w-12 text-left text-[11px] sm:text-xs font-mono">{formatTime(duration)}</span>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center justify-between gap-1 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-2.5">
               <button
                 onClick={togglePlay}
-                className="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition cursor-pointer"
+                className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition cursor-pointer"
                 title={isPlaying ? 'Pause (Espace)' : 'Lecture (Espace)'}
               >
-                {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white ml-0.5" />}
+                {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-white" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-white ml-0.5" />}
               </button>
 
               <button
@@ -1647,10 +1664,10 @@ export const VideoPlayer: React.FC<Props> = ({
                 {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
               </button>
 
-              {/* Mode Nuit / Boost Dialogues */}
+              {/* Mode Nuit / Boost Dialogues (affiché directement sur écran moyen/large) */}
               <button
                 onClick={toggleNightMode}
-                className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 ${
+                className={`hidden md:flex p-2 rounded-xl transition cursor-pointer items-center gap-1 ${
                   nightMode
                     ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm'
                     : 'text-slate-300 hover:text-white hover:bg-white/10'
@@ -1662,7 +1679,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 }
               >
                 <Moon className={`w-4 h-4 ${nightMode ? 'text-indigo-400 fill-indigo-400/30' : ''}`} />
-                <span className="text-[10px] font-bold hidden sm:inline">
+                <span className="text-[10px] font-bold">
                   {nightMode ? 'Nuit' : ''}
                 </span>
               </button>
@@ -1671,14 +1688,9 @@ export const VideoPlayer: React.FC<Props> = ({
               <div className="relative">
                 <button
                   onClick={() => {
-                    setShowAudioMenu(!showAudioMenu);
-                    setShowBookmarkMenu(false);
-                    setShowAdjustMenu(false);
-                    setShowSleepMenu(false);
-                    setShowSpeedMenu(false);
-                    setShowSubMenu(false);
-                    setShowSkipMenu(false);
-                    setShowStreamSelector(false);
+                    const next = !showAudioMenu;
+                    closeAllMenus();
+                    setShowAudioMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     isTranscodingAudio
@@ -1698,7 +1710,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showAudioMenu && (
-                  <div className="absolute left-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3.5 z-50 space-y-3">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:left-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-80 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3.5 z-50 space-y-3 custom-scrollbar">
                     <div className="flex items-center justify-between pb-1.5 border-b border-white/5">
                       <div className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1.5">
                         <Headphones className="w-3.5 h-3.5 text-emerald-400" />
@@ -1815,16 +1827,12 @@ export const VideoPlayer: React.FC<Props> = ({
 
             <div className="flex items-center gap-1.5 sm:gap-2 relative">
               {/* Signets & Marqueurs personnels */}
-              <div className="relative">
+              <div className="relative hidden sm:block">
                 <button
                   onClick={() => {
-                    setShowBookmarkMenu(!showBookmarkMenu);
-                    setShowAdjustMenu(false);
-                    setShowSleepMenu(false);
-                    setShowSpeedMenu(false);
-                    setShowSubMenu(false);
-                    setShowSkipMenu(false);
-                    setShowStreamSelector(false);
+                    const next = !showBookmarkMenu;
+                    closeAllMenus();
+                    setShowBookmarkMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     bookmarks.length > 0 || showBookmarkMenu
@@ -1840,7 +1848,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showBookmarkMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-80 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3 custom-scrollbar">
                     <div className="flex items-center justify-between pb-1 border-b border-white/5">
                       <div className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
                         <Bookmark className="w-3 h-3 text-amber-400" /> Signets & Marqueurs
@@ -1923,16 +1931,12 @@ export const VideoPlayer: React.FC<Props> = ({
               </div>
 
               {/* Format d'image & Égaliseur Vidéo */}
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button
                   onClick={() => {
-                    setShowAdjustMenu(!showAdjustMenu);
-                    setShowBookmarkMenu(false);
-                    setShowSleepMenu(false);
-                    setShowSpeedMenu(false);
-                    setShowSubMenu(false);
-                    setShowSkipMenu(false);
-                    setShowStreamSelector(false);
+                    const next = !showAdjustMenu;
+                    closeAllMenus();
+                    setShowAdjustMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     aspectRatio !== 'contain' || brightness !== 100 || contrast !== 100 || saturation !== 100 || showAdjustMenu
@@ -1946,7 +1950,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showAdjustMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-80 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3 custom-scrollbar">
                     {/* Ratio d'aspect */}
                     <div>
                       <div className="flex items-center justify-between pb-1 border-b border-white/5 mb-2">
@@ -2084,16 +2088,12 @@ export const VideoPlayer: React.FC<Props> = ({
               </div>
 
               {/* Minuteur de mise en veille (Sleep Timer) */}
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button
                   onClick={() => {
-                    setShowSleepMenu(!showSleepMenu);
-                    setShowBookmarkMenu(false);
-                    setShowAdjustMenu(false);
-                    setShowSpeedMenu(false);
-                    setShowSubMenu(false);
-                    setShowSkipMenu(false);
-                    setShowStreamSelector(false);
+                    const next = !showSleepMenu;
+                    closeAllMenus();
+                    setShowSleepMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     sleepTimerMinutes !== null
@@ -2113,7 +2113,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showSleepMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-56 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 space-y-1">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-56 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 space-y-1 custom-scrollbar">
                     <div className="px-2.5 py-1 border-b border-white/5 flex items-center justify-between text-[10px] font-black uppercase text-slate-400">
                       <span>Minuteur de veille</span>
                       <span className="text-amber-400 font-mono">Touche T</span>
@@ -2146,12 +2146,12 @@ export const VideoPlayer: React.FC<Props> = ({
               </div>
 
               {/* Playback Speed selector */}
-              <div className="relative">
+              <div className="relative hidden sm:block">
                 <button
                   onClick={() => {
-                    setShowSpeedMenu(!showSpeedMenu);
-                    setShowSubMenu(false);
-                    setShowSkipMenu(false);
+                    const next = !showSpeedMenu;
+                    closeAllMenus();
+                    setShowSpeedMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 text-xs font-bold ${
                     playbackRate !== 1
@@ -2165,7 +2165,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showSpeedMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-40 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-2 z-50 space-y-1">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-48 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 space-y-1 custom-scrollbar">
                     <div className="px-3 py-1.5 border-b border-white/5 text-[10px] font-black uppercase text-slate-400">
                       Vitesse
                     </div>
@@ -2188,12 +2188,12 @@ export const VideoPlayer: React.FC<Props> = ({
               </div>
 
               {/* Menu Saut de génériques (Intro & Outro) */}
-              <div className="relative">
+              <div className="relative hidden sm:block">
                 <button
                   onClick={() => {
-                    setShowSkipMenu(!showSkipMenu);
-                    setShowSpeedMenu(false);
-                    setShowSubMenu(false);
+                    const next = !showSkipMenu;
+                    closeAllMenus();
+                    setShowSkipMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                     showSkipMenu || autoSkipOutro
@@ -2207,7 +2207,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showSkipMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-72 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-72 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3 custom-scrollbar">
                     <div>
                       <div className="text-[10px] font-black uppercase text-slate-400 mb-1 flex items-center justify-between">
                         <span>Générique de fin (Outro)</span>
@@ -2360,9 +2360,9 @@ export const VideoPlayer: React.FC<Props> = ({
               <div className="relative">
                 <button
                   onClick={() => {
-                    setShowSubMenu(!showSubMenu);
-                    setShowSpeedMenu(false);
-                    setShowSkipMenu(false);
+                    const next = !showSubMenu;
+                    closeAllMenus();
+                    setShowSubMenu(next);
                   }}
                   className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
                     selectedSub
@@ -2379,7 +2379,7 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showSubMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-88 bg-[#0e131f] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2.5 backdrop-blur-xl ring-1 ring-white/5">
+                  <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-88 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#0e131f] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2.5 backdrop-blur-xl ring-1 ring-white/5 custom-scrollbar">
                     {/* En-tête et onglets du menu */}
                     <div className="flex items-center justify-between border-b border-white/10 pb-2">
                       <div className="flex items-center gap-1 bg-white/5 p-0.5 rounded-xl text-[11px] font-bold">
@@ -2757,14 +2757,12 @@ export const VideoPlayer: React.FC<Props> = ({
 
               {/* Sélecteur de fichiers vidéo internes du torrent (ex: pack saison séries) */}
               {torrentStats?.files && torrentStats.files.filter((f) => f.isVideo).length > 1 && (
-                <div className="relative">
+                <div className="relative hidden md:block">
                   <button
                     onClick={() => {
-                      setShowTorrentFilesMenu(!showTorrentFilesMenu);
-                      setShowStreamSelector(false);
-                      setShowSubMenu(false);
-                      setShowSpeedMenu(false);
-                      setShowSkipMenu(false);
+                      const next = !showTorrentFilesMenu;
+                      closeAllMenus();
+                      setShowTorrentFilesMenu(next);
                     }}
                     className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
                       showTorrentFilesMenu
@@ -2780,7 +2778,7 @@ export const VideoPlayer: React.FC<Props> = ({
                   </button>
 
                   {showTorrentFilesMenu && (
-                    <div className="absolute right-0 bottom-full mb-3 w-84 bg-[#111622] border border-cyan-500/30 rounded-2xl shadow-2xl p-3 z-50 space-y-2">
+                    <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-84 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-cyan-500/30 rounded-2xl shadow-2xl p-3 z-50 space-y-2 custom-scrollbar">
                       <div className="text-[10px] font-black uppercase text-cyan-400 mb-1 flex items-center justify-between">
                         <span>Fichiers du torrent</span>
                         <span className="text-slate-400 font-normal">
@@ -2822,13 +2820,12 @@ export const VideoPlayer: React.FC<Props> = ({
 
               {/* Sélecteur de flux alternatifs en cours de lecture */}
               {availableStreams && availableStreams.length > 1 && onSelectStream && (
-                <div className="relative">
+                <div className="relative hidden md:block">
                   <button
                     onClick={() => {
-                      setShowStreamSelector(!showStreamSelector);
-                      setShowSubMenu(false);
-                      setShowSpeedMenu(false);
-                      setShowSkipMenu(false);
+                      const next = !showStreamSelector;
+                      closeAllMenus();
+                      setShowStreamSelector(next);
                     }}
                     className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
                       showStreamSelector
@@ -2842,7 +2839,7 @@ export const VideoPlayer: React.FC<Props> = ({
                   </button>
 
                   {showStreamSelector && (
-                    <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2">
+                    <div className="fixed sm:absolute inset-x-3 sm:inset-auto sm:right-0 bottom-20 sm:bottom-full sm:mb-3 w-auto sm:w-80 max-h-[75vh] sm:max-h-none overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2 custom-scrollbar">
                       <div className="text-[10px] font-black uppercase text-slate-400 mb-1 flex items-center justify-between">
                         <span>Flux alternatifs</span>
                         <span className="text-indigo-400 font-semibold">{availableStreams.length} flux</span>
@@ -2899,7 +2896,7 @@ export const VideoPlayer: React.FC<Props> = ({
               {/* Google Cast / AirPlay */}
               <button
                 onClick={handleCast}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="hidden md:flex p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Diffuser sur TV (Google Cast / AirPlay)"
               >
                 <Cast className="w-4 h-4 text-slate-300 hover:text-indigo-400" />
@@ -2908,11 +2905,210 @@ export const VideoPlayer: React.FC<Props> = ({
               {/* Native Picture-in-Picture */}
               <button
                 onClick={togglePiP}
-                className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="hidden sm:flex p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Picture-in-Picture (PiP)"
               >
                 <PictureInPicture2 className="w-4 h-4" />
               </button>
+
+              {/* Menu Plus d'options (Mobile uniquement) */}
+              <div className="relative sm:hidden">
+                <button
+                  onClick={() => {
+                    const next = !showMoreMobileMenu;
+                    closeAllMenus();
+                    setShowMoreMobileMenu(next);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center justify-center ${
+                    showMoreMobileMenu
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Plus d'options"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+
+                {showMoreMobileMenu && (
+                  <div className="fixed inset-x-3 bottom-20 z-50 max-h-[75vh] overflow-y-auto bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3.5 space-y-3 custom-scrollbar">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+                        Options de lecture
+                      </span>
+                      <button
+                        onClick={() => setShowMoreMobileMenu(false)}
+                        className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {/* Vitesse */}
+                      <button
+                        onClick={() => {
+                          closeAllMenus();
+                          setShowSpeedMenu(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Gauge className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span className="font-semibold text-slate-200">Vitesse</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-indigo-300">{playbackRate}x</span>
+                      </button>
+
+                      {/* Génériques */}
+                      <button
+                        onClick={() => {
+                          closeAllMenus();
+                          setShowSkipMenu(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FastForward className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span className="font-semibold text-slate-200">Génériques</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">{skipOutroSec}s</span>
+                      </button>
+
+                      {/* Rendu / Format */}
+                      <button
+                        onClick={() => {
+                          closeAllMenus();
+                          setShowAdjustMenu(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span className="font-semibold text-slate-200">Rendu</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 capitalize">{aspectRatio}</span>
+                      </button>
+
+                      {/* Mode Nuit */}
+                      <button
+                        onClick={() => toggleNightMode()}
+                        className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition cursor-pointer ${
+                          nightMode
+                            ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300'
+                            : 'bg-white/5 border-white/5 text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Moon className={`w-4 h-4 ${nightMode ? 'text-indigo-400' : 'text-slate-400'}`} />
+                          <span className="font-semibold">Voix claires</span>
+                        </div>
+                        <span className={`text-[10px] font-bold ${nightMode ? 'text-indigo-300' : 'text-slate-500'}`}>
+                          {nightMode ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+
+                      {/* Signets */}
+                      <button
+                        onClick={() => {
+                          closeAllMenus();
+                          setShowBookmarkMenu(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bookmark className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span className="font-semibold text-slate-200">Signets</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-amber-400">{bookmarks.length}</span>
+                      </button>
+
+                      {/* Minuteur */}
+                      <button
+                        onClick={() => {
+                          closeAllMenus();
+                          setShowSleepMenu(true);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Timer className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span className="font-semibold text-slate-200">Veille</span>
+                        </div>
+                        <span className="text-[10px] text-amber-400 font-mono">
+                          {sleepTimerMinutes !== null ? (sleepTimerMinutes === -1 ? 'Fin' : `${sleepTimerMinutes}m`) : 'OFF'}
+                        </span>
+                      </button>
+
+                      {/* Fichiers Torrent si multi-vidéo */}
+                      {torrentStats?.files && torrentStats.files.filter((f) => f.isVideo).length > 1 && (
+                        <button
+                          onClick={() => {
+                            closeAllMenus();
+                            setShowTorrentFilesMenu(true);
+                          }}
+                          className="p-2.5 rounded-xl bg-cyan-600/10 border border-cyan-500/30 text-left flex items-center justify-between transition cursor-pointer col-span-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Film className="w-4 h-4 text-cyan-400 shrink-0" />
+                            <span className="font-semibold text-cyan-200">Épisodes Torrent</span>
+                          </div>
+                          <span className="text-xs font-mono font-bold text-cyan-300">
+                            {torrentStats.files.filter((f) => f.isVideo).length} vidéos
+                          </span>
+                        </button>
+                      )}
+
+                      {/* Flux alternatifs si plusieurs */}
+                      {availableStreams && availableStreams.length > 1 && onSelectStream && (
+                        <button
+                          onClick={() => {
+                            closeAllMenus();
+                            setShowStreamSelector(true);
+                          }}
+                          className="p-2.5 rounded-xl bg-indigo-600/10 border border-indigo-500/30 text-left flex items-center justify-between transition cursor-pointer col-span-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span className="font-semibold text-indigo-200">Flux alternatifs</span>
+                          </div>
+                          <span className="text-xs font-mono font-bold text-indigo-300">
+                            {availableStreams.length} flux
+                          </span>
+                        </button>
+                      )}
+
+                      {/* PiP */}
+                      <button
+                        onClick={() => {
+                          togglePiP();
+                          setShowMoreMobileMenu(false);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <PictureInPicture2 className="w-4 h-4 text-slate-300 shrink-0" />
+                          <span className="font-semibold text-slate-200">PiP</span>
+                        </div>
+                      </button>
+
+                      {/* Cast */}
+                      <button
+                        onClick={() => {
+                          handleCast();
+                          setShowMoreMobileMenu(false);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-left flex items-center justify-between transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Cast className="w-4 h-4 text-slate-300 shrink-0" />
+                          <span className="font-semibold text-slate-200">Cast TV</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Fullscreen */}
               <button
@@ -2925,7 +3121,28 @@ export const VideoPlayer: React.FC<Props> = ({
             </div>
           </div>
         </div>
+
+        {/* Backdrop pour fermeture des popups contextuels au clic extérieur */}
+        {(showAudioMenu ||
+          showBookmarkMenu ||
+          showAdjustMenu ||
+          showSleepMenu ||
+          showSpeedMenu ||
+          showSkipMenu ||
+          showSubMenu ||
+          showTorrentFilesMenu ||
+          showStreamSelector ||
+          showMoreMobileMenu) && (
+          <div
+            className="fixed inset-0 z-40 bg-black/40 sm:bg-transparent pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeAllMenus();
+            }}
+          />
+        )}
       </div>
     </div>
   );
 };
+
