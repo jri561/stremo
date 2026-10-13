@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseManager } from '../db.js';
 import { AddonClient } from '../addonClient.js';
+import { extractInfoHash, TorrentEngine } from '../torrentEngine.js';
 
 test('DatabaseManager profiles and progress isolation', () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test.db');
@@ -388,5 +389,25 @@ test('DatabaseManager bookmarks management and ordering', async () => {
   assert.strictEqual(afterDelete[0].id, bm1.id);
 
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
+test('TorrentEngine infoHash extraction and life cycle', async () => {
+  // 1. Hex 40 chars
+  const hexHash = '0123456789abcdef0123456789abcdef01234567';
+  assert.strictEqual(extractInfoHash(hexHash), hexHash.toLowerCase());
+
+  // 2. Magnet link with xt=urn:btih:
+  const magnet = `magnet:?xt=urn:btih:${hexHash}&dn=Test+Movie&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337`;
+  assert.strictEqual(extractInfoHash(magnet), hexHash.toLowerCase());
+
+  // 3. Invalid inputs
+  assert.strictEqual(extractInfoHash(''), null);
+  assert.strictEqual(extractInfoHash('https://example.com/video.mp4'), null);
+
+  // 4. Engine creation & destruction
+  const engine = new TorrentEngine();
+  const nullStats = engine.getStats('invalid-link');
+  assert.strictEqual(nullStats, null);
+  await engine.destroy();
 });
 

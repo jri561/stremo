@@ -398,6 +398,45 @@ export const VideoPlayer: React.FC<Props> = ({
     }
   };
 
+  // Statistiques WebTorrent P2P en direct (vitesse, pairs, avancement séquentiel)
+  const [torrentStats, setTorrentStats] = useState<{
+    numPeers: number;
+    downloadSpeed: number;
+    uploadSpeed: number;
+    progress: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!streamUrl || (!streamUrl.startsWith('magnet:') && !streamUrl.includes('/api/torrent/stream'))) {
+      setTorrentStats(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchStats = async () => {
+      try {
+        const stats = await api.getTorrentStats(streamUrl);
+        if (isMounted && stats) {
+          setTorrentStats({
+            numPeers: stats.numPeers || 0,
+            downloadSpeed: stats.downloadSpeed || 0,
+            uploadSpeed: stats.uploadSpeed || 0,
+            progress: stats.progress || 0,
+          });
+        }
+      } catch {
+        // Ignorer les erreurs réseau temporaires
+      }
+    };
+
+    fetchStats();
+    const interval = setInterval(fetchStats, 2000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [streamUrl]);
+
   const handleDeleteBookmark = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
@@ -557,7 +596,7 @@ export const VideoPlayer: React.FC<Props> = ({
     hasAutoSkippedIntroRef.current = false;
     setBuffering(true);
 
-    const effectiveStreamUrl = useStreamProxy ? api.getProxiedStreamUrl(streamUrl) : streamUrl;
+    const effectiveStreamUrl = api.resolvePlayableUrl(streamUrl, useStreamProxy);
     triedProxyRef.current = useStreamProxy;
 
     const isHls = effectiveStreamUrl.includes('.m3u8') || effectiveStreamUrl.includes('hls');
@@ -589,7 +628,12 @@ export const VideoPlayer: React.FC<Props> = ({
       };
       video.onerror = () => {
         // Tentative automatique de fallback sur le proxy local (contourne les erreurs CORS des CDN)
-        if (!triedProxyRef.current && !streamUrl.includes('/api/proxy/stream')) {
+        if (
+          !triedProxyRef.current &&
+          !streamUrl.startsWith('magnet:') &&
+          !streamUrl.includes('/api/proxy/stream') &&
+          !streamUrl.includes('/api/torrent/stream')
+        ) {
           triedProxyRef.current = true;
           const proxied = api.getProxiedStreamUrl(streamUrl);
           setSkipToast("Contournement CORS : bascule sur le proxy local...");
@@ -1292,6 +1336,18 @@ export const VideoPlayer: React.FC<Props> = ({
             <h2 className="text-sm md:text-base font-bold text-white drop-shadow line-clamp-1 max-w-xl">
               {title}
             </h2>
+            {torrentStats && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs backdrop-blur shadow-md">
+                <Radio className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+                <span className="font-bold">WebTorrent P2P</span>
+                <span className="text-slate-400">•</span>
+                <span>{(torrentStats.downloadSpeed / (1024 * 1024)).toFixed(1)} Mo/s</span>
+                <span className="text-slate-400">•</span>
+                <span>{torrentStats.numPeers} pairs</span>
+                <span className="text-slate-400">•</span>
+                <span>{Math.round(torrentStats.progress * 100)}%</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

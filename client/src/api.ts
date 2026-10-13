@@ -493,6 +493,33 @@ export const api = {
     }
     return url;
   },
+  getTorrentStreamUrl: (magnetOrHash: string, fileIndex?: number): string => {
+    let url = `${API_BASE}/torrent/stream?magnet=${encodeURIComponent(magnetOrHash)}`;
+    if (fileIndex !== undefined) {
+      url += `&fileIndex=${fileIndex}`;
+    }
+    return url;
+  },
+  getTorrentStats: async (magnetOrHash: string): Promise<any> => {
+    try {
+      const res = await fetch(`${API_BASE}/torrent/stats?magnet=${encodeURIComponent(magnetOrHash)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.success ? data : null;
+    } catch {
+      return null;
+    }
+  },
+  resolvePlayableUrl: (rawUrl: string, useProxy = false): string => {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('magnet:') || /^[a-fA-F0-9]{40}$/.test(rawUrl.trim())) {
+      return api.getTorrentStreamUrl(rawUrl);
+    }
+    if (useProxy) {
+      return api.getProxiedStreamUrl(rawUrl);
+    }
+    return rawUrl;
+  },
   getProxiedSubtitleUrl: (originalUrl: string): string => {
     if (!originalUrl) return originalUrl;
     if (originalUrl.startsWith('blob:') || originalUrl.startsWith('data:')) return originalUrl;

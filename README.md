@@ -125,11 +125,12 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Recherche en temps réel** : filtrage instantané par mots-clés, langues (VOSTFR, VF), debrid, genres.
    - **Copie d'URL de manifest & installation 1-clic** avec indicateur d'état immédiat (« Déjà installé »).
 
-13. **Support Avancé Magnet & P2P Torrent (Streaming Gratuit sans Debrid)** :
-   - **Détection automatique des liens Magnet et hashes infoHash** : extraction du nombre de seeders/pairs (`👤 87 seeders`).
-   - **Badges dédiés `🧲 P2P Torrent`** et conseils d'utilisation personnalisés.
-   - **Bouton 1-clic « Copier le lien magnet »** avec retour visuel immédiat.
-   - **Routage intelligent vers VLC / MPV / Lecteur externe** avec invite interactive si tenté depuis un navigateur web standard.
+13. **Moteur de Streaming P2P Torrent Intégré (WebTorrent Séquentiel en Direct)** :
+   - **Lecture web directe sans compte Debrid** : streaming instantané des torrents et liens magnet directement dans le lecteur web grâce au moteur séquentiel intégré côté serveur (`/api/torrent/stream?magnet=...`).
+   - **Téléchargement séquentiel optimisé** : priorisation automatique des pièces vidéo du début à la fin pour démarrer la lecture en quelques secondes sans attendre le téléchargement complet du fichier.
+   - **Support complet HTTP 206 Range** : saut de lecture fluide (seek), mise en mémoire tampon adaptative et sélection automatique du fichier vidéo optimal (`.mp4`, `.mkv`, `.webm`).
+   - **Badges et Télémétrie P2P en direct** : affichage en temps réel dans le header du lecteur vidéo du débit de téléchargement (Mo/s), du nombre de pairs connectés et de la progression séquentielle.
+   - **Bouton d'action dédié « ⚡ Lire P2P »** : lancement immédiat dans le navigateur ou ouverture en 1 clic dans VLC externe (`vlc`) sur Linux/Desktop.
 
 14. **Minuteur de Sommeil (Sleep Timer) & OSD HUD Centré** :
    - **Minuteur de mise en veille paramétrable** : 15 min, 30 min, 45 min, 60 min, ou « Fin de l'épisode / du film » (raccourci clavier `T`).
@@ -174,6 +175,7 @@ stremo/
 ├── server/                               # Serveur API Express & Moteur Stremio (Node.js + node:sqlite)
 │   ├── src/db.ts                         # Gestionnaire SQLite (profils, reprise, bibliothèque, addons)
 │   ├── src/addonClient.ts                # Client Stremio v3 (cache TTL, fetch minuté, masquage)
+│   ├── src/torrentEngine.ts              # Moteur WebTorrent séquentiel & streaming HTTP 206
 │   ├── src/index.ts                      # Routes API REST & proxy parallèle (Promise.allSettled)
 │   ├── src/tests/server.test.ts          # Tests d'isolation des profils et catalogues
 │   ├── src/tests/security.test.ts        # Tests de validation d'URL et de masquage

@@ -258,12 +258,13 @@ test('parseStream détecte les liens Magnet P2P et extrait les seeders', async (
 
   const parsed = parseStream(magnetStream);
   assert.strictEqual(parsed.isMagnet, true);
+  assert.strictEqual(parsed.torrentReady, true);
   assert.strictEqual(parsed.infoHash?.toLowerCase(), 'd2b3c4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3');
   assert.strictEqual(parsed.seeders, 87);
   assert.strictEqual(parsed.webReady, false);
 
   const rec = getPlayerRecommendation(parsed);
-  assert.strictEqual(rec.isWebOk, false);
+  assert.strictEqual(rec.isWebOk, true);
   assert.ok(rec.label.includes('87 seeders'));
   assert.ok(rec.label.includes('VLC'));
 });

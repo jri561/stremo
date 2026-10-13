@@ -18,6 +18,7 @@ import {
   Zap,
   Download,
   Copy,
+  ExternalLink,
 } from 'lucide-react';
 import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress, CatalogItem } from '../api';
 import { AVAILABLE_PLAYERS, getAndroidIntentUrl, type PlayerChoice } from '../players';
@@ -229,16 +230,7 @@ export const MediaModal: React.FC<Props> = ({
     }
 
     if (stream.url.startsWith('magnet:') && selectedPlayer === 'web') {
-      const wantVlc = window.confirm(
-        "Ce flux est un lien Magnet Torrent P2P. Les navigateurs web ne peuvent pas lire les torrents en direct sans compte Debrid.\n\nSouhaitez-vous le lancer dans VLC / lecteur externe ?"
-      );
-      if (wantVlc) {
-        onPlayStream(stream, 'vlc');
-      } else {
-        navigator.clipboard.writeText(stream.url);
-        setDownloadToast("Lien Magnet copié dans le presse-papier 🧲");
-        setTimeout(() => setDownloadToast(null), 3000);
-      }
+      onPlayStream(stream, 'web');
       return;
     }
 
@@ -668,17 +660,29 @@ export const MediaModal: React.FC<Props> = ({
                         {/* Boutons d'action */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           {parsed.isMagnet && parsed.stream.url && (
-                            <button
-                              onClick={(e) => handleCopyMagnet(e, parsed.stream.url!)}
-                              className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-white/10 transition cursor-pointer"
-                              title="Copier le lien magnet P2P"
-                            >
-                              {copiedMagnetUrl === parsed.stream.url ? (
-                                <Check className="w-4 h-4 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-4 h-4" />
-                              )}
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => handleCopyMagnet(e, parsed.stream.url!)}
+                                className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-white/10 transition cursor-pointer"
+                                title="Copier le lien magnet P2P"
+                              >
+                                {copiedMagnetUrl === parsed.stream.url ? (
+                                  <Check className="w-4 h-4 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-4 h-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onPlayStream(parsed.stream, 'vlc');
+                                }}
+                                className="p-2 rounded-xl bg-white/5 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-white/10 transition cursor-pointer"
+                                title="Ouvrir dans VLC externe (PC / Linux)"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                           {parsed.stream.url && !parsed.isMagnet && (
                             <button
@@ -691,10 +695,15 @@ export const MediaModal: React.FC<Props> = ({
                           )}
                           <button
                             onClick={() => handleLaunch(parsed.stream)}
-                            className="px-4 py-2 rounded-xl font-bold text-xs bg-white text-black hover:bg-slate-200 flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer shadow-md active:scale-95"
+                            className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                              parsed.isMagnet
+                                ? 'bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-extrabold shadow-cyan-500/20'
+                                : 'bg-white text-black hover:bg-slate-200'
+                            }`}
+                            title={parsed.isMagnet ? 'Lire directement en streaming P2P WebTorrent' : 'Lire le flux'}
                           >
-                            <Play className="w-3.5 h-3.5 fill-black" />
-                            <span>Lire</span>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>{parsed.isMagnet ? '⚡ Lire P2P' : 'Lire'}</span>
                           </button>
                         </div>
                       </div>

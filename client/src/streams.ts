@@ -27,6 +27,8 @@ export interface ParsedStream {
   seeders?: number;
   /** Lisible nativement par un navigateur (pas de mkv/HEVC signalé « notWebReady » ni de magnet P2P direct). */
   webReady: boolean;
+  /** Compatible avec le moteur de streaming P2P WebTorrent intégré au serveur. */
+  torrentReady: boolean;
 }
 
 const DEBRID_CODES: Record<string, string> = {
@@ -155,6 +157,7 @@ export function parseStream(stream: StreamSource): ParsedStream {
     infoHash,
     seeders,
     webReady: isWebCandidate,
+    torrentReady: isMagnet,
   };
 }
 
@@ -167,9 +170,9 @@ export function getPlayerRecommendation(p: ParsedStream): {
   if (p.isMagnet && !p.debrid) {
     const seederText = p.seeders !== undefined ? ` (${p.seeders} seeders)` : '';
     return {
-      isWebOk: false,
-      label: `Torrent P2P${seederText} • VLC ou client torrent conseillé`,
-      badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+      isWebOk: true,
+      label: `⚡ WebTorrent P2P${seederText} • VLC disponible`,
+      badgeClass: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
     };
   }
 

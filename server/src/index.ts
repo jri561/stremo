@@ -8,6 +8,7 @@ import { DatabaseManager } from './db.js';
 import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster } from './addonClient.js';
 import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
 import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
+import { torrentEngine } from './torrentEngine.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -24,6 +25,7 @@ app.use('/api', (req, res, next) => {
     !accessKey ||
     req.path === '/auth-check' ||
     req.path.startsWith('/proxy/') ||
+    req.path.startsWith('/torrent/') ||
     req.path.startsWith('/sync/pair/events/') ||
     req.path.startsWith('/sync/lan/')
   ) {
@@ -409,6 +411,21 @@ app.get('/api/sync/lan/devices', handleGetLanDevices);
 app.get('/api/proxy/stream', proxyStream);
 app.head('/api/proxy/stream', proxyStream);
 app.get('/api/proxy/subtitle', proxySubtitle);
+
+// --- MOTEUR DE STREAMING P2P TORRENT EN DIRECT (WEBTORRENT SEQUENTIAL HTTP STREAMING) ---
+app.get('/api/torrent/stream', (req, res) => torrentEngine.handleStream(req, res));
+app.head('/api/torrent/stream', (req, res) => torrentEngine.handleStream(req, res));
+app.get('/api/torrent/stats', (req, res) => {
+  const magnet = (req.query.magnet as string) || (req.query.infoHash as string);
+  if (!magnet) {
+    return res.status(400).json({ success: false, error: 'Paramètre magnet ou infoHash requis' });
+  }
+  const stats = torrentEngine.getStats(magnet);
+  if (!stats) {
+    return res.json({ success: false, error: 'Torrent non trouvé ou en cours de recherche de pairs' });
+  }
+  res.json({ success: true, ...stats });
+});
 
 // --- TIMINGS EXACTS DE GÉNÉRIQUES (ANISKIP / COMMUNITY TIMINGS) ---
 app.get('/api/skip-times/:type/:id', async (req, res) => {

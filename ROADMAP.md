@@ -187,9 +187,13 @@ flowchart LR
    - ✅ Exploration et regroupement automatique des œuvres associées dans les catalogues.
    - ✅ Lancement et ouverture directe des films et séries de la filmographie sans quitter le contexte.
 
-### 📍 Phase 3 : Streaming Torrent In-Browser & Transcodage Optionnel (Futur)
-1. **Streaming Torrent WebTorrent Embarqué dans le Navigateur** :
-   - Streaming peer-to-peer séquentiel directement sans serveur Debrid pour les contenus libres.
+### 📍 Phase 3 : Streaming Torrent WebTorrent In-Browser (Terminé ✓) & Transcodage Optionnel
+1. **Streaming Torrent WebTorrent Embarqué (Séquentiel en Direct)** :
+   - ✅ Moteur WebTorrent optimisé côté serveur Express (`server/src/torrentEngine.ts`) avec initialisation paresseuse et téléchargement séquentiel des pièces vidéo.
+   - ✅ Support complet HTTP 206 `Partial Content` et `Range Requests` permettant le saut direct (seek) dans la timeline sans attendre le fichier complet.
+   - ✅ Sélection automatique du fichier vidéo principal (`.mp4`, `.mkv`, `.webm`) et désélection des fichiers superflus pour économiser la bande passante.
+   - ✅ Télémétrie P2P en temps réel dans le header du lecteur vidéo : affichage du débit (Mo/s), du nombre de pairs connectés et du pourcentage téléchargé.
+   - ✅ Bouton 1-clic « ⚡ Lire P2P » directement dans le lecteur web avec conservation du lancement externe VLC (`vlc`).
 2. **Transcodage Serveur à la Volée (Optionnel pour NAS)** :
    - Transcodage matériel (NVENC / Intel QuickSync) pour lire des vidéos 4K HEVC ou profils audio non reconnus par les vieux navigateurs.
 
