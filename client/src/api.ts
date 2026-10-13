@@ -50,6 +50,7 @@ export interface Profile {
   id: string;
   name: string;
   avatar: string;
+  color?: string;
   isKids: number;
   pin?: string | null;
   preferredAudioLanguage?: string;
@@ -224,12 +225,13 @@ export const api = {
     pin?: string,
     preferredAudioLanguage?: string,
     preferredSubtitleLanguage?: string,
-    subtitleMode?: string
+    subtitleMode?: string,
+    color = 'indigo'
   ): Promise<Profile> => {
     const res = await fetch(`${API_BASE}/profiles`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode }),
+      body: JSON.stringify({ name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, color }),
     });
     const data = await res.json();
     return data.profile;
@@ -239,6 +241,7 @@ export const api = {
     updates: {
       name?: string;
       avatar?: string;
+      color?: string;
       isKids?: boolean;
       pin?: string | null;
       preferredAudioLanguage?: string;

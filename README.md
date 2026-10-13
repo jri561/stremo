@@ -42,13 +42,19 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Filtre local instantané** : barre de recherche intégrée pour filtrer les résultats en mémoire sans latence réseau.
    - **Double mode Grille aérée (5-6 colonnes) & Liste détaillée** avec affichage des barres de reprise de lecture profil.
 
-4. **Gestion Complète des Profils & Sécurité Parentale Personnalisée** :
-   - Mode « Gérer les profils » inspiré des grandes plateformes (Netflix, Disney+).
-   - Modification en direct du nom, de l'avatar, du statut Enfant et du code PIN 4 chiffres pour chaque profil.
-   - Suppression de profil avec confirmation et nettoyage complet en base de données SQLite.
-   - **Mode Enfants sécurisé** : filtrage automatique et strict des catalogues, suggestions et résultats de recherche (animation et famille conservés ; horreur, gore et violence masqués).
-   - **Protection parentale par code PIN** : impossible de basculer d'un profil enfant vers un profil adulte sans entrer le code PIN parental.
-   - **Isolation totale** de l'historique de lecture, pourcentages d'avancement et bibliothèque de favoris.
+4. **Gestion Complète des Profils & Personnalisation Stylisée** :
+   - **Catalogue de 20 Avatars Répartis en 5 Catégories** :
+     - *Cinéma & Médias* : Cinéphile, Séries & TV, Soirée Popcorn, Réalisateur.
+     - *Aventure & Héros* : Astronaute, Action & Feu, Explorateur, Électrique.
+     - *Famille & Enfants* : Magie & Étoiles, Sourire Joyeux, Cœur Romantique, Compagnon Chat.
+     - *Gaming & Tech* : Gamer, Audiophile, Cyber Robot, Geek Passion.
+     - *Classique & VIP* : Standard, VIP Royal, Frisson & Horreur, Pause Café.
+   - **8 Thèmes de Couleurs & Halos Lumineux** : Indigo Électrique, Violet Mystique, Rose Bubblegum, Émeraude Zen, Cyan Néon, Ambre Solaire, Rubis Écarlate et Ardoise Furtif.
+   - **Écran « Qui regarde ? » Cinématique** : cartes stylisées aux coins arrondis épousant le dégradé du thème et l'avatar sélectionné, animations douces et halos fluorescents.
+   - **Modale Unifiée de Personnalisation (`ProfileModal`)** : interface interactive pour créer ou modifier un profil, bascule en 1 clic vers le mode Enfant, sélecteur visuel d'avatars et pastilles chromatiques.
+   - **Mode Enfants Sécurisé** : filtrage automatique et strict des catalogues, suggestions et résultats de recherche (animation et famille conservés ; horreur, gore et violence masqués).
+   - **Protection Parentale par Code PIN** : verrouillage 4 chiffres empêchant tout basculement non autorisé d'un profil enfant vers un profil adulte.
+   - **Isolation Totale SQLite** : historique de lecture, reprises au millième de seconde, favoris et préférences linguistiques (VF/VOSTFR) 100% étanches par profil.
 
 5. **« Lecture Rapide 1-Clic » (Smart Instant Autoplay)** :
    - **Lecture Immédiate Netflix-Style** : bouton « Lecture rapide » sur la HeroBanner, au survol des affiches et dans les fiches médias. L'algorithme résout les flux en arrière-plan et sélectionne automatiquement le meilleur flux (priorité VF/VOSTFR selon le profil, cache Debrid instantané et compatibilité navigateur).

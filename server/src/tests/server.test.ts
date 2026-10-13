@@ -49,10 +49,20 @@ test('DatabaseManager profiles and progress isolation', () => {
   assert.strictEqual(db.isInLibrary(p1, 'tt0111161'), true);
   assert.strictEqual(db.isInLibrary(p2, 'tt0111161'), false);
 
-  // 4. Profile update test
-  const updatedP2 = db.updateProfile(p2, { name: 'Salon VIP', avatar: 'sparkles', isKids: 1, pin: '1234' });
+  // 4. Profile creation & customization test
+  const customProfile = db.createProfile('Gamer Pro', 'gamepad', 0, '9999', 'eng', 'fra', 'always', 'emerald');
+  assert.strictEqual(customProfile.name, 'Gamer Pro');
+  assert.strictEqual(customProfile.avatar, 'gamepad');
+  assert.strictEqual(customProfile.color, 'emerald');
+  assert.strictEqual(customProfile.preferredAudioLanguage, 'eng');
+  assert.strictEqual(customProfile.preferredSubtitleLanguage, 'fra');
+  assert.strictEqual(customProfile.subtitleMode, 'always');
+
+  // 4b. Profile update test with color & pin
+  const updatedP2 = db.updateProfile(p2, { name: 'Salon VIP', avatar: 'sparkles', color: 'ruby', isKids: 1, pin: '1234' });
   assert.strictEqual(updatedP2?.name, 'Salon VIP');
   assert.strictEqual(updatedP2?.avatar, 'sparkles');
+  assert.strictEqual(updatedP2?.color, 'ruby');
   assert.strictEqual(updatedP2?.isKids, 1);
   assert.strictEqual(updatedP2?.pin, '1234');
 

@@ -93,11 +93,14 @@ La plupart des applications de streaming communautaires existantes souffrent de 
   - Lancement direct dans les lecteurs externes desktop : **VLC**, **MPV**, lecteur système (`xdg-open`).
   - Support des Intents Android : **Just Player**, **Nova Video Player**, **MX Player**.
 
-### 🛡️ D. Multi-Profils & Sécurité Parentale
-- Mode « Gérer les profils » inspiré de Netflix avec édition du nom, de l'avatar et du PIN.
+### 🛡️ D. Multi-Profils & Personnalisation Stylisée
+- **Catalogue de 20 Avatars Lucide** répartis en 5 univers thématiques (*Cinéma*, *Aventure*, *Famille & Enfants*, *Gaming & Tech*, *Classique & VIP*).
+- **8 Palettes Chromatiques & Dégradés Lumineux** (*Indigo*, *Violet*, *Rose*, *Émeraude*, *Cyan*, *Ambre*, *Rubis*, *Ardoise*).
+- **Modale Unifiée `ProfileModal`** : création et édition fluide avec prévisualisation en direct, sélecteur de couleurs, sélection d'avatar et configuration des langues par défaut.
+- **Écran « Qui regarde ? » Amélioré** : cartes arrondies rétroéclairées par leur halo thématique individuel.
 - **Mode Enfants hermétique** : filtrage algorithmique strict bannissant tout contenu violent, horrifique ou adulte et préservant les animations et contenus familiaux.
 - **Contrôle Parental par Code PIN** : verrouillage instantané interdisant le passage d'un profil enfant à un profil adulte sans le PIN correct.
-- **Isolation totale** en base SQLite des historiques, temps de visionnage et favoris entre chaque membre du foyer.
+- **Isolation totale** en base SQLite des historiques, temps de visionnage, langues préférées et favoris entre chaque membre du foyer.
 
 ### 🌐 E. Trakt.tv & Synchronisation Multi-Écrans
 - **Scrobbler Trakt.tv Bidirectionnel** :
@@ -112,7 +115,7 @@ La plupart des applications de streaming communautaires existantes souffrent de 
 ### 📦 F. Infrastructure, PWA & Add-ons
 - **Progressive Web App (PWA)** : Web App Manifest, Service Worker et installation en 1 clic sur Android, iOS, Windows et Mac.
 - **Navigation Télécommande / Clavier (D-Pad)** : focus rings indigo haute visibilité pour usage sur Smart TV et box de salon.
-- **Suite de tests automatisés** : 51 tests unitaires et d'intégration (31 serveur + 20 client) et 14 scénarios End-to-End dans Chromium réel Playwright (`npm test` & `node audit_chromium_e2e.mjs`, 100% au vert).
+- **Suite de tests automatisés** : 60 tests unitaires et d'intégration (32 serveur + 28 client) et 18 scénarios End-to-End dans Chromium réel Playwright (`npm test` & `node audit_profiles_customization_e2e.mjs`, 100% au vert).
 
 ---
 

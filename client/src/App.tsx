@@ -394,9 +394,10 @@ export function App() {
     pin?: string,
     preferredAudioLanguage?: string,
     preferredSubtitleLanguage?: string,
-    subtitleMode?: string
+    subtitleMode?: string,
+    color?: string
   ) => {
-    const created = await api.createProfile(name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode);
+    const created = await api.createProfile(name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, color);
     setProfiles((prev) => [...prev, created]);
     handleSelectProfile(created);
   };
@@ -406,6 +407,7 @@ export function App() {
     updates: {
       name: string;
       avatar: string;
+      color?: string;
       isKids: boolean;
       pin?: string | null;
       preferredAudioLanguage?: string;

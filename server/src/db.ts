@@ -6,6 +6,7 @@ export interface Profile {
   id: string;
   name: string;
   avatar: string;
+  color?: string;
   isKids: number;
   pin?: string;
   preferredAudioLanguage?: string;
@@ -128,6 +129,7 @@ export class DatabaseManager {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         avatar TEXT NOT NULL,
+        color TEXT DEFAULT 'indigo',
         isKids INTEGER DEFAULT 0,
         pin TEXT,
         preferredAudioLanguage TEXT DEFAULT 'fra',
@@ -216,6 +218,7 @@ export class DatabaseManager {
     `);
 
     // Migrations idempotentes pour bases SQLite existantes
+    try { this.db.exec("ALTER TABLE profiles ADD COLUMN color TEXT DEFAULT 'indigo'"); } catch (_) {}
     try { this.db.exec("ALTER TABLE profiles ADD COLUMN preferredAudioLanguage TEXT DEFAULT 'fra'"); } catch (_) {}
     try { this.db.exec("ALTER TABLE profiles ADD COLUMN preferredSubtitleLanguage TEXT DEFAULT 'fra'"); } catch (_) {}
     try { this.db.exec("ALTER TABLE profiles ADD COLUMN subtitleMode TEXT DEFAULT 'foreign_only'"); } catch (_) {}
@@ -225,11 +228,11 @@ export class DatabaseManager {
     if (countProfiles.count === 0) {
       const now = new Date().toISOString();
       this.db.prepare(`
-        INSERT INTO profiles (id, name, avatar, isKids, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt)
+        INSERT INTO profiles (id, name, avatar, color, isKids, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt)
         VALUES 
-          ('p1', 'Principal', 'user', 0, 'fra', 'fra', 'foreign_only', ?),
-          ('p2', 'Secondaire', 'film', 0, 'fra', 'fra', 'foreign_only', ?),
-          ('p3', 'Enfants', 'sparkles', 1, 'fra', 'fra', 'foreign_only', ?)
+          ('p1', 'Principal', 'film', 'indigo', 0, 'fra', 'fra', 'foreign_only', ?),
+          ('p2', 'Secondaire', 'compass', 'cyan', 0, 'fra', 'fra', 'foreign_only', ?),
+          ('p3', 'Enfants', 'sparkles', 'pink', 1, 'fra', 'fra', 'foreign_only', ?)
       `).run(now, now, now);
     }
 
@@ -261,16 +264,18 @@ export class DatabaseManager {
     pin?: string,
     preferredAudioLanguage: string = 'fra',
     preferredSubtitleLanguage: string = 'fra',
-    subtitleMode: string = 'foreign_only'
+    subtitleMode: string = 'foreign_only',
+    color: string = 'indigo'
   ): Profile {
     const id = 'p_' + Date.now();
     const createdAt = new Date().toISOString();
     const isKidsNum = isKids ? 1 : 0;
+    const safeColor = color || 'indigo';
     this.db.prepare(`
-      INSERT INTO profiles (id, name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, avatar, isKidsNum, pin || null, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt);
-    return { id, name, avatar, isKids: isKidsNum, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt };
+      INSERT INTO profiles (id, name, avatar, color, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, avatar, safeColor, isKidsNum, pin || null, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt);
+    return { id, name, avatar, color: safeColor, isKids: isKidsNum, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, createdAt };
   }
 
   updateProfile(
@@ -278,6 +283,7 @@ export class DatabaseManager {
     updates: {
       name?: string;
       avatar?: string;
+      color?: string;
       isKids?: number;
       pin?: string | null;
       preferredAudioLanguage?: string;
@@ -290,6 +296,7 @@ export class DatabaseManager {
 
     const name = updates.name !== undefined ? updates.name : existing.name;
     const avatar = updates.avatar !== undefined ? updates.avatar : existing.avatar;
+    const color = updates.color !== undefined ? updates.color : (existing.color || 'indigo');
     const isKids = updates.isKids !== undefined ? (updates.isKids ? 1 : 0) : existing.isKids;
     const pin = updates.pin !== undefined ? updates.pin : existing.pin;
     const preferredAudioLanguage = updates.preferredAudioLanguage !== undefined ? updates.preferredAudioLanguage : (existing.preferredAudioLanguage || 'fra');
@@ -298,9 +305,9 @@ export class DatabaseManager {
 
     this.db.prepare(`
       UPDATE profiles
-      SET name = ?, avatar = ?, isKids = ?, pin = ?, preferredAudioLanguage = ?, preferredSubtitleLanguage = ?, subtitleMode = ?
+      SET name = ?, avatar = ?, color = ?, isKids = ?, pin = ?, preferredAudioLanguage = ?, preferredSubtitleLanguage = ?, subtitleMode = ?
       WHERE id = ?
-    `).run(name, avatar, isKids, pin || null, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, id);
+    `).run(name, avatar, color, isKids, pin || null, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode, id);
 
     return this.getProfile(id);
   }
@@ -615,9 +622,27 @@ export class DatabaseManager {
         if (!p.id || !p.name) continue;
         const exists = this.getProfile(p.id);
         if (!exists) {
-          this.createProfile(p.name, p.avatar || 'user', p.isKids === 1, p.pin);
+          this.createProfile(
+            p.name,
+            p.avatar || 'film',
+            p.isKids === 1,
+            p.pin,
+            p.preferredAudioLanguage || 'fra',
+            p.preferredSubtitleLanguage || 'fra',
+            p.subtitleMode || 'foreign_only',
+            p.color || 'indigo'
+          );
         } else {
-          this.updateProfile(p.id, { name: p.name, avatar: p.avatar, isKids: p.isKids, pin: p.pin });
+          this.updateProfile(p.id, {
+            name: p.name,
+            avatar: p.avatar,
+            color: p.color,
+            isKids: p.isKids,
+            pin: p.pin,
+            preferredAudioLanguage: p.preferredAudioLanguage,
+            preferredSubtitleLanguage: p.preferredSubtitleLanguage,
+            subtitleMode: p.subtitleMode,
+          });
         }
         importedProfiles++;
       }

@@ -42,9 +42,18 @@ app.get('/api/profiles', (req, res) => {
 
 app.post('/api/profiles', (req, res) => {
   try {
-    const { name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
+    const { name, avatar, color, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     if (!name) return res.status(400).json({ error: 'Nom requis' });
-    const profile = db.createProfile(name, avatar || 'user', isKids ? 1 : 0, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode);
+    const profile = db.createProfile(
+      name,
+      avatar || 'film',
+      isKids ? 1 : 0,
+      pin,
+      preferredAudioLanguage,
+      preferredSubtitleLanguage,
+      subtitleMode,
+      color || 'indigo'
+    );
     res.json({ success: true, profile });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -53,10 +62,11 @@ app.post('/api/profiles', (req, res) => {
 
 app.put('/api/profiles/:id', (req, res) => {
   try {
-    const { name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
+    const { name, avatar, color, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     const updated = db.updateProfile(req.params.id, {
       name,
       avatar,
+      color,
       isKids: isKids !== undefined ? (isKids ? 1 : 0) : undefined,
       pin: pin !== undefined ? (pin ? String(pin) : null) : undefined,
       preferredAudioLanguage,
