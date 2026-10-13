@@ -510,8 +510,11 @@ export const api = {
       return null;
     }
   },
-  resolvePlayableUrl: (rawUrl: string, useProxy = false): string => {
+  resolvePlayableUrl: (rawUrl: string, useProxy = false, useTranscode = false, startTime = 0): string => {
     if (!rawUrl) return '';
+    if (useTranscode) {
+      return api.getTranscodedStreamUrl(rawUrl, { startTime, mode: 'audio' });
+    }
     if (rawUrl.startsWith('magnet:') || /^[a-fA-F0-9]{40}$/.test(rawUrl.trim())) {
       return api.getTorrentStreamUrl(rawUrl);
     }
@@ -519,6 +522,25 @@ export const api = {
       return api.getProxiedStreamUrl(rawUrl);
     }
     return rawUrl;
+  },
+  getTranscodeCapabilities: async (): Promise<{ available: boolean }> => {
+    try {
+      const res = await fetch(`${API_BASE}/transcode/capabilities`);
+      if (!res.ok) return { available: false };
+      return res.json();
+    } catch {
+      return { available: false };
+    }
+  },
+  getTranscodedStreamUrl: (rawUrl: string, options?: { startTime?: number; mode?: 'audio' | 'full' }): string => {
+    let url = `${API_BASE}/transcode/stream?url=${encodeURIComponent(rawUrl)}`;
+    if (options?.startTime && options.startTime > 0) {
+      url += `&startTime=${options.startTime}`;
+    }
+    if (options?.mode) {
+      url += `&mode=${options.mode}`;
+    }
+    return url;
   },
   getProxiedSubtitleUrl: (originalUrl: string): string => {
     if (!originalUrl) return originalUrl;

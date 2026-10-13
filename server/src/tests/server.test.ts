@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DatabaseManager } from '../db.js';
 import { AddonClient } from '../addonClient.js';
 import { extractInfoHash, TorrentEngine } from '../torrentEngine.js';
+import { transcodeEngine } from '../transcodeEngine.js';
 
 test('DatabaseManager profiles and progress isolation', () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test.db');
@@ -410,4 +411,14 @@ test('TorrentEngine infoHash extraction and life cycle', async () => {
   assert.strictEqual(nullStats, null);
   await engine.destroy();
 });
+
+test('TranscodeEngine availability and probe resilience', async () => {
+  const avail = await transcodeEngine.isAvailable();
+  assert.strictEqual(typeof avail, 'boolean');
+
+  // Probe on invalid/offline URL must resolve gracefully to null
+  const probeNull = await transcodeEngine.probe('http://127.0.0.1:54321/nonexistent.mp4', 1000);
+  assert.strictEqual(probeNull, null);
+});
+
 

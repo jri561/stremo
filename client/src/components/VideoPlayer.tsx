@@ -32,6 +32,7 @@ import {
   Sun,
   Contrast,
   Sparkles,
+  Film,
 } from 'lucide-react';
 import { api, type StreamSource, type BookmarkItem } from '../api';
 import { getAndroidIntentUrl } from '../players';
@@ -398,17 +399,27 @@ export const VideoPlayer: React.FC<Props> = ({
     }
   };
 
-  // Statistiques WebTorrent P2P en direct (vitesse, pairs, avancement séquentiel)
+  // Statistiques WebTorrent P2P en direct et sélecteur de fichiers internes (multi-épisodes)
   const [torrentStats, setTorrentStats] = useState<{
     numPeers: number;
     downloadSpeed: number;
     uploadSpeed: number;
     progress: number;
+    files?: Array<{
+      index: number;
+      name: string;
+      length: number;
+      isVideo: boolean;
+    }>;
   } | null>(null);
+  const [selectedTorrentFileIndex, setSelectedTorrentFileIndex] = useState<number | null>(null);
+  const [showTorrentFilesMenu, setShowTorrentFilesMenu] = useState<boolean>(false);
+  const triedTranscodeRef = useRef(false);
 
   useEffect(() => {
     if (!streamUrl || (!streamUrl.startsWith('magnet:') && !streamUrl.includes('/api/torrent/stream'))) {
       setTorrentStats(null);
+      setSelectedTorrentFileIndex(null);
       return;
     }
 
@@ -422,6 +433,7 @@ export const VideoPlayer: React.FC<Props> = ({
             downloadSpeed: stats.downloadSpeed || 0,
             uploadSpeed: stats.uploadSpeed || 0,
             progress: stats.progress || 0,
+            files: stats.files || [],
           });
         }
       } catch {
@@ -436,6 +448,32 @@ export const VideoPlayer: React.FC<Props> = ({
       clearInterval(interval);
     };
   }, [streamUrl]);
+
+  const handleSelectTorrentFile = (fileIndex: number, fileName: string) => {
+    setSelectedTorrentFileIndex(fileIndex);
+    setShowTorrentFilesMenu(false);
+    const video = videoRef.current;
+    if (!video) return;
+    const newUrl = api.getTorrentStreamUrl(streamUrl, fileIndex);
+    setSkipToast(`Lecture de : ${fileName} 🎬`);
+    video.src = newUrl;
+    video.load();
+    video.play().catch(() => {});
+  };
+
+  const handleRetryWithTranscode = () => {
+    setPlaybackError(null);
+    setFallbackCountdown(null);
+    setBuffering(true);
+    const video = videoRef.current;
+    if (!video) return;
+    const curTime = Math.round(video.currentTime || initialTime || 0);
+    const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime: curTime, mode: 'audio' });
+    setSkipToast("Transcodage audio AAC en cours... ⚡");
+    video.src = transcodeUrl;
+    video.load();
+    video.play().catch(() => {});
+  };
 
   const handleDeleteBookmark = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -627,12 +665,13 @@ export const VideoPlayer: React.FC<Props> = ({
         video.play().catch(() => setIsPlaying(false));
       };
       video.onerror = () => {
-        // Tentative automatique de fallback sur le proxy local (contourne les erreurs CORS des CDN)
+        // 1. Tentative automatique de fallback sur le proxy local (contourne les erreurs CORS des CDN)
         if (
           !triedProxyRef.current &&
           !streamUrl.startsWith('magnet:') &&
           !streamUrl.includes('/api/proxy/stream') &&
-          !streamUrl.includes('/api/torrent/stream')
+          !streamUrl.includes('/api/torrent/stream') &&
+          !streamUrl.includes('/api/transcode/stream')
         ) {
           triedProxyRef.current = true;
           const proxied = api.getProxiedStreamUrl(streamUrl);
@@ -642,6 +681,19 @@ export const VideoPlayer: React.FC<Props> = ({
           video.play().catch(() => {});
           return;
         }
+
+        // 2. Si le format ou le codec audio est incompatible, bascule automatique sur le remuxer AAC universel
+        if (!triedTranscodeRef.current && !streamUrl.includes('/api/transcode/stream')) {
+          triedTranscodeRef.current = true;
+          const cur = Math.round(video.currentTime || initialTime || 0);
+          const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime: cur, mode: 'audio' });
+          setSkipToast("Bascule automatique : remuxing audio AAC en direct ⚡");
+          video.src = transcodeUrl;
+          video.load();
+          video.play().catch(() => {});
+          return;
+        }
+
         triggerPlaybackError('Format vidéo ou codec audio (ex: DTS / AC3 / HEVC) non décodable directement dans ce navigateur.');
       };
     }
@@ -1192,6 +1244,13 @@ export const VideoPlayer: React.FC<Props> = ({
             Ce fichier utilise un format haute fidélité (4K ou audio multicanal). Pour en profiter sans coupure, lancez-le dans votre lecteur ou choisissez une version directe.
           </p>
           <div className="flex flex-col gap-2.5 w-full">
+            <button
+              onClick={handleRetryWithTranscode}
+              className="w-full px-5 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-600/25 transition cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-400 active:scale-98"
+            >
+              <Sparkles className="w-4 h-4" />
+              ⚡ Réparer & Lire directement (Transcodage AAC)
+            </button>
             {availableStreams && availableStreams.length > 1 && onSelectStream && (
               <button
                 onClick={() => {
@@ -2197,6 +2256,71 @@ export const VideoPlayer: React.FC<Props> = ({
                   </div>
                 )}
               </div>
+
+              {/* Sélecteur de fichiers vidéo internes du torrent (ex: pack saison séries) */}
+              {torrentStats?.files && torrentStats.files.filter((f) => f.isVideo).length > 1 && (
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowTorrentFilesMenu(!showTorrentFilesMenu);
+                      setShowStreamSelector(false);
+                      setShowSubMenu(false);
+                      setShowSpeedMenu(false);
+                      setShowSkipMenu(false);
+                    }}
+                    className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                      showTorrentFilesMenu
+                        ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40'
+                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Choisir un épisode / fichier vidéo dans ce torrent"
+                  >
+                    <Film className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-bold hidden md:inline">
+                      Épisodes Torrent ({torrentStats.files.filter((f) => f.isVideo).length})
+                    </span>
+                  </button>
+
+                  {showTorrentFilesMenu && (
+                    <div className="absolute right-0 bottom-full mb-3 w-84 bg-[#111622] border border-cyan-500/30 rounded-2xl shadow-2xl p-3 z-50 space-y-2">
+                      <div className="text-[10px] font-black uppercase text-cyan-400 mb-1 flex items-center justify-between">
+                        <span>Fichiers du torrent</span>
+                        <span className="text-slate-400 font-normal">
+                          {torrentStats.files.filter((f) => f.isVideo).length} vidéos
+                        </span>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                        {torrentStats.files
+                          .filter((f) => f.isVideo)
+                          .map((file) => {
+                            const isCurrent = selectedTorrentFileIndex === file.index;
+                            return (
+                              <button
+                                key={file.index}
+                                onClick={() => handleSelectTorrentFile(file.index, file.name)}
+                                className={`w-full p-2.5 rounded-xl text-left transition cursor-pointer flex items-center justify-between gap-2 border ${
+                                  isCurrent
+                                    ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-200'
+                                    : 'bg-white/5 border-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold truncate">{file.name}</p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {(file.length / (1024 * 1024)).toFixed(0)} Mo
+                                  </p>
+                                </div>
+                                {isCurrent && (
+                                  <Check className="w-4 h-4 text-cyan-400 shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Sélecteur de flux alternatifs en cours de lecture */}
               {availableStreams && availableStreams.length > 1 && onSelectStream && (

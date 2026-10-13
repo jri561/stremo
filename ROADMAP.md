@@ -187,15 +187,20 @@ flowchart LR
    - ✅ Exploration et regroupement automatique des œuvres associées dans les catalogues.
    - ✅ Lancement et ouverture directe des films et séries de la filmographie sans quitter le contexte.
 
-### 📍 Phase 3 : Streaming Torrent WebTorrent In-Browser (Terminé ✓) & Transcodage Optionnel
+### 📍 Phase 3 : Streaming Torrent WebTorrent In-Browser (Terminé ✓) & Transcodage Audio Universel (Terminé ✓)
 1. **Streaming Torrent WebTorrent Embarqué (Séquentiel en Direct)** :
    - ✅ Moteur WebTorrent optimisé côté serveur Express (`server/src/torrentEngine.ts`) avec initialisation paresseuse et téléchargement séquentiel des pièces vidéo.
    - ✅ Support complet HTTP 206 `Partial Content` et `Range Requests` permettant le saut direct (seek) dans la timeline sans attendre le fichier complet.
    - ✅ Sélection automatique du fichier vidéo principal (`.mp4`, `.mkv`, `.webm`) et désélection des fichiers superflus pour économiser la bande passante.
+   - ✅ **Sélecteur de fichiers & épisodes internes du torrent** : navigation multi-fichiers directe dans le lecteur vidéo (`Épisodes Torrent (N)`) pour regarder n'importe quel épisode d'un pack de saison en 1 clic.
    - ✅ Télémétrie P2P en temps réel dans le header du lecteur vidéo : affichage du débit (Mo/s), du nombre de pairs connectés et du pourcentage téléchargé.
    - ✅ Bouton 1-clic « ⚡ Lire P2P » directement dans le lecteur web avec conservation du lancement externe VLC (`vlc`).
-2. **Transcodage Serveur à la Volée (Optionnel pour NAS)** :
-   - Transcodage matériel (NVENC / Intel QuickSync) pour lire des vidéos 4K HEVC ou profils audio non reconnus par les vieux navigateurs.
+2. **Transcodage & Remuxing Audio Universel à la Volée (FFmpeg)** :
+   - ✅ Moteur de remuxing temps réel (`server/src/transcodeEngine.ts`) convertissant toute piste audio incompatible (Dolby AC3, EAC3, DTS, TrueHD) vers AAC 192k stéréo universel dans un conteneur MP4 fragmenté.
+   - ✅ Copie de flux vidéo sans réencodage (`-c:v copy`) pour une charge processeur quasi-nulle (0% CPU vidéo).
+   - ✅ Bascule automatique progressive en cascade en cas d'erreur de décodage navigateur.
+   - ✅ Bouton de réparation manuelle 1-clic « ⚡ Réparer & Lire directement (Transcodage AAC) » dans le panneau de secours.
+   - ✅ Sonde d'analyse technique FFprobe (`/api/transcode/probe`).
 
 ---
 

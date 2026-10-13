@@ -9,6 +9,7 @@ import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster } from '.
 import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
 import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
 import { torrentEngine } from './torrentEngine.js';
+import { transcodeEngine } from './transcodeEngine.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -26,6 +27,7 @@ app.use('/api', (req, res, next) => {
     req.path === '/auth-check' ||
     req.path.startsWith('/proxy/') ||
     req.path.startsWith('/torrent/') ||
+    req.path.startsWith('/transcode/') ||
     req.path.startsWith('/sync/pair/events/') ||
     req.path.startsWith('/sync/lan/')
   ) {
@@ -426,6 +428,20 @@ app.get('/api/torrent/stats', (req, res) => {
   }
   res.json({ success: true, ...stats });
 });
+
+// --- MOTEUR DE TRANSCODAGE & REMUXING AUDIO/VIDÉO (FFMPEG STREAMING) ---
+app.get('/api/transcode/capabilities', async (_req, res) => {
+  const available = await transcodeEngine.isAvailable();
+  res.json({ success: true, available });
+});
+app.get('/api/transcode/probe', async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).json({ error: 'URL requise' });
+  const probe = await transcodeEngine.probe(url);
+  res.json({ success: true, probe });
+});
+app.get('/api/transcode/stream', (req, res) => transcodeEngine.handleTranscode(req, res));
+app.head('/api/transcode/stream', (req, res) => transcodeEngine.handleTranscode(req, res));
 
 // --- TIMINGS EXACTS DE GÉNÉRIQUES (ANISKIP / COMMUNITY TIMINGS) ---
 app.get('/api/skip-times/:type/:id', async (req, res) => {
