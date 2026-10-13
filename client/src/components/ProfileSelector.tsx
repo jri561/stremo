@@ -7,8 +7,27 @@ interface Props {
   profiles: Profile[];
   activeProfile: Profile | null;
   onSelectProfile: (profile: Profile) => void;
-  onCreateProfile: (name: string, avatar: string, isKids: boolean, pin?: string) => Promise<void>;
-  onUpdateProfile?: (id: string, updates: { name: string; avatar: string; isKids: boolean; pin?: string | null }) => Promise<void>;
+  onCreateProfile: (
+    name: string,
+    avatar: string,
+    isKids: boolean,
+    pin?: string,
+    preferredAudioLanguage?: string,
+    preferredSubtitleLanguage?: string,
+    subtitleMode?: string
+  ) => Promise<void>;
+  onUpdateProfile?: (
+    id: string,
+    updates: {
+      name: string;
+      avatar: string;
+      isKids: boolean;
+      pin?: string | null;
+      preferredAudioLanguage?: string;
+      preferredSubtitleLanguage?: string;
+      subtitleMode?: string;
+    }
+  ) => Promise<void>;
   onDeleteProfile?: (id: string) => Promise<void>;
   onOpenDeviceSync?: () => void;
   onToggleTvMode?: () => void;
@@ -35,12 +54,18 @@ export const ProfileSelector: React.FC<Props> = ({
   const [newAvatar, setNewAvatar] = useState('film');
   const [isKids, setIsKids] = useState(false);
   const [newPin, setNewPin] = useState('');
+  const [newAudioLang, setNewAudioLang] = useState('fra');
+  const [newSubLang] = useState('fra');
+  const [newSubMode, setNewSubMode] = useState('foreign_only');
 
   // Formulaire édition
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('film');
   const [editIsKids, setEditIsKids] = useState(false);
   const [editPin, setEditPin] = useState('');
+  const [editAudioLang, setEditAudioLang] = useState('fra');
+  const [editSubLang, setEditSubLang] = useState('fra');
+  const [editSubMode, setEditSubMode] = useState('foreign_only');
 
   const getAvatarIcon = (avatar: string) => {
     switch (avatar) {
@@ -56,10 +81,20 @@ export const ProfileSelector: React.FC<Props> = ({
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProfileName.trim()) return;
-    await onCreateProfile(newProfileName.trim(), newAvatar, isKids, newPin.trim() || undefined);
+    await onCreateProfile(
+      newProfileName.trim(),
+      newAvatar,
+      isKids,
+      newPin.trim() || undefined,
+      newAudioLang,
+      newSubLang,
+      newSubMode
+    );
     setNewProfileName('');
     setIsKids(false);
     setNewPin('');
+    setNewAudioLang('fra');
+    setNewSubMode('foreign_only');
     setShowCreateModal(false);
   };
 
@@ -70,6 +105,9 @@ export const ProfileSelector: React.FC<Props> = ({
     setEditAvatar(p.avatar);
     setEditIsKids(p.isKids === 1);
     setEditPin(p.pin || '');
+    setEditAudioLang(p.preferredAudioLanguage || 'fra');
+    setEditSubLang(p.preferredSubtitleLanguage || 'fra');
+    setEditSubMode(p.subtitleMode || 'foreign_only');
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -80,6 +118,9 @@ export const ProfileSelector: React.FC<Props> = ({
       avatar: editAvatar,
       isKids: editIsKids,
       pin: editPin.trim() ? editPin.trim() : null,
+      preferredAudioLanguage: editAudioLang,
+      preferredSubtitleLanguage: editSubLang,
+      subtitleMode: editSubMode,
     });
     setEditingProfile(null);
   };
@@ -308,6 +349,40 @@ export const ProfileSelector: React.FC<Props> = ({
                   </label>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Audio préféré
+                    </label>
+                    <select
+                      value={newAudioLang}
+                      onChange={(e) => setNewAudioLang(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#141923] border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="fra">🇫🇷 Français (VF)</option>
+                      <option value="eng">🇬🇧 Anglais (VO)</option>
+                      <option value="jpn">🇯🇵 Japonais</option>
+                      <option value="spa">🇪🇸 Espagnol</option>
+                      <option value="deu">🇩🇪 Allemand</option>
+                      <option value="ita">🇮🇹 Italien</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Sous-titres
+                    </label>
+                    <select
+                      value={newSubMode}
+                      onChange={(e) => setNewSubMode(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#141923] border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="foreign_only">💬 VOSTFR (si audio étranger)</option>
+                      <option value="always">Toujours actifs</option>
+                      <option value="off">Désactivés</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                     Code PIN de sécurité (Optionnel, 4 chiffres)
@@ -429,6 +504,40 @@ export const ProfileSelector: React.FC<Props> = ({
                   <label htmlFor="editIsKids" className="text-xs text-slate-300 cursor-pointer">
                     Profil Enfant (bloque automatiquement les contenus adultes)
                   </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Audio préféré
+                    </label>
+                    <select
+                      value={editAudioLang}
+                      onChange={(e) => setEditAudioLang(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#141923] border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="fra">🇫🇷 Français (VF)</option>
+                      <option value="eng">🇬🇧 Anglais (VO)</option>
+                      <option value="jpn">🇯🇵 Japonais</option>
+                      <option value="spa">🇪🇸 Espagnol</option>
+                      <option value="deu">🇩🇪 Allemand</option>
+                      <option value="ita">🇮🇹 Italien</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Sous-titres
+                    </label>
+                    <select
+                      value={editSubMode}
+                      onChange={(e) => setEditSubMode(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#141923] border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="foreign_only">💬 VOSTFR (si audio étranger)</option>
+                      <option value="always">Toujours actifs</option>
+                      <option value="off">Désactivés</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>

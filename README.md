@@ -50,7 +50,11 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Protection parentale par code PIN** : impossible de basculer d'un profil enfant vers un profil adulte sans entrer le code PIN parental.
    - **Isolation totale** de l'historique de lecture, pourcentages d'avancement et bibliothèque de favoris.
 
-6. **Lecteur Vidéo Next-Gen, Auto-Fallback & Saut des Génériques** :
+6. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
+   - **Proxy de Streaming Anti-CORS & HTTP 206 Range** : contournement instantané des restrictions cross-origin des serveurs distants (Torbox, Real-Debrid) avec support des requêtes partielles HTTP 206 Range pour une lecture web ultra-fluide.
+   - **Proxy de Sous-titres & Conversion WebVTT à la volée** : standardisation automatique de tous les sous-titres OpenSubtitles (.srt) en format WebVTT (.vtt) avec en-têtes CORS permissifs.
+   - **Préférences Linguistiques Intelligentes** : détection de la langue audio du flux (VF, MULTI, VO) et activation automatique de la bonne piste de sous-titres (ex: VOSTFR automatique si film étranger, sous-titres masqués si VF).
+   - **Chapitrage Exact AniSkip & Communautaire** : saut d'intro et d'outro calé sur les timecodes réels vérifiés par la communauté pour les animes et séries.
    - **Auto-Fallback Transparent en Cas d'Erreur** : si un flux vidéo direct ou Debrid échoue (format non supporté, codec indisponible, lien 403), Stremo bascule automatiquement vers le prochain flux alternatif après un compte à rebours de 3 secondes avec option d'annulation ou basculement immédiat.
    - **Sélecteur de Flux en Cours de Lecture** : bouton `Flux (N)` directement accessible dans la barre de contrôle pour permuter entre 4K, 1080p, ou différents providers Debrid sans jamais quitter ni relancer le lecteur vidéo !
    - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio intégrée via Web Audio API (`DynamicsCompressorNode`) activable en 1 clic pour apaiser les effets sonores assourdissants et magnifier la clarté des dialogues lors des séances nocturnes.
@@ -63,9 +67,11 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Vitesse de lecture adaptable** : `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x` et mode **Picture-in-Picture (PiP)** natif.
    - Lancement direct dans les lecteurs externes desktop (**VLC**, **MPV**, lecteur système) et Android (**Just Player**, **Nova Video Player**, **MX Player**).
 
-7. **Appairage Express TV / PC / Mobile par Code PIN & QR Code** :
-   - **Connexion TV en 5 secondes** : affichez un grand code 6 caractères et un QR code sur votre téléviseur de salon. Scannez avec votre téléphone ou entrez le code depuis votre PC pour transmettre profils, favoris et add-ons instantanément sans saisir de mot de passe à la télécommande !
-   - **Canal de Synchronisation Continue du Foyer (Family Sync Hub)** : synchronisation bidirectionnelle automatique en arrière-plan toutes les 45 secondes pour retrouver son historique de reprise sur tous les écrans du foyer sans manipulation manuelle.
+7. **Écosystème Multi-Écrans, Découverte Réseau Local & Télécommande Mobile Temps Réel** :
+   - **Découverte Réseau Local Zéro-Configuration (Zero-Conf LAN Discovery)** : détection automatique en direct des écrans Stremo connectés sur le même réseau Wi-Fi local (Salon TV, Mobile, Desktop) avec association en 1 clic sans devoir saisir de code PIN.
+   - **Appairage Express TV <50ms par Server-Sent Events (SSE)** : grand code PIN 6 caractères et QR code interactif avec basculement sub-50ms dès validation mobile.
+   - **Télécommande Mobile Tactile en Direct** : pavé tactile sur smartphone pour piloter la TV à distance en temps réel (Play/Pause, saut +/-10s, passer l'intro, épisode suivant, contrôle du volume et mute).
+   - **Canal de Synchronisation Continue du Foyer (Family Sync Hub)** : synchronisation bidirectionnelle automatique en arrière-plan pour synchroniser profils, favoris et progression sur tous les écrans du foyer sans manipulation manuelle.
 
 8. **Mode Salon TV 10-pieds Dédié** :
    - Détection automatique sur Smart TV et boîtiers Android TV, Fire TV, Chromecast, WebOS, Tizen.
@@ -77,7 +83,8 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - Envoi automatique du scrobble en temps réel (`start` à la lecture, `pause` lors des arrêts, `stop` avec marquage comme « Vu » dès 80%).
    - Proxy sécurisé côté serveur (`/api/trakt/scrobble`) pour respecter les en-têtes officiels de l'API Trakt v2.
 
-10. **Sauvegarde & Migration Multi-Écrans (Export / Import 1-Clic)** :
+10. **Sauvegarde, Ma Liste (Favoris) & Migration Multi-Écrans (1-Clic)** :
+   - **Rail « Ma Liste » en Page d'Accueil** : accès instantané aux favoris du profil avec synchronisation multi-écrans en temps réel.
    - Sauvegarde complète de la configuration : profils, add-ons installés, bibliothèque de favoris et historique d'avancement.
    - Exportation instantanée au format JSON ou copie dans le presse-papier.
    - Restauration multi-écrans avec modes **Fusion intelligente** (ajoute sans écraser) ou **Remplacement intégral**.

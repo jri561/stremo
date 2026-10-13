@@ -15,8 +15,15 @@ import {
   AlertTriangle,
   Download,
   Upload,
+  Play,
+  RotateCcw,
+  RotateCw,
+  FastForward,
+  SkipForward,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
-import { api } from '../api';
+import { api, type LanDevice } from '../api';
 
 interface Props {
   initialPairCode?: string;
@@ -29,7 +36,7 @@ export const DeviceSyncModal: React.FC<Props> = ({
   onClose,
   onDataSynced,
 }) => {
-  const [activeTab, setActiveTab] = useState<'receive' | 'send' | 'continuous'>(
+  const [activeTab, setActiveTab] = useState<'receive' | 'send' | 'remote' | 'continuous'>(
     initialPairCode ? 'send' : 'receive'
   );
 
@@ -57,7 +64,74 @@ export const DeviceSyncModal: React.FC<Props> = ({
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
+  // Tab 4: Télécommande mobile / Remote Control
+  const [remoteCodeInput, setRemoteCodeInput] = useState<string>(() => {
+    return localStorage.getItem('stremo_paired_remote_code') || initialPairCode || '';
+  });
+  const [remoteFeedback, setRemoteFeedback] = useState<string | null>(null);
+
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Découverte des appareils sur le réseau local Wi-Fi
+  const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
+
+  useEffect(() => {
+    let deviceId = localStorage.getItem('stremo_lan_device_id');
+    if (!deviceId) {
+      deviceId = 'dev_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem('stremo_lan_device_id', deviceId);
+    }
+
+    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+    const isTv = localStorage.getItem('stremo_tv_mode') === 'true' || /SmartTV|Android.*TV|Tizen|Web0S/i.test(navigator.userAgent);
+    const deviceType = isTv ? 'tv' : isMobile ? 'mobile' : 'desktop';
+    const deviceName = isTv ? 'Salon TV' : isMobile ? 'Smartphone Mobile' : 'Ordinateur Portable';
+
+    const announceAndRefresh = async () => {
+      try {
+        await api.announceLanDevice({
+          deviceId,
+          name: deviceName,
+          deviceType,
+          pairCode: pairCode || undefined,
+        });
+        const list = await api.getLanDevices(deviceId);
+        setLanDevices(list);
+      } catch {
+        // Ignorer erreur temporaire
+      }
+    };
+
+    announceAndRefresh();
+    const interval = setInterval(announceAndRefresh, 6000);
+    return () => clearInterval(interval);
+  }, [pairCode]);
+
+  const handleQuickConnectDevice = async (dev: LanDevice) => {
+    if (dev.pairCode) {
+      try {
+        setIsSending(true);
+        const dataToSync = await api.exportBackup();
+        await api.authorizePairSession(dev.pairCode, dataToSync, syncChannelId || undefined);
+        localStorage.setItem('stremo_paired_remote_code', dev.pairCode);
+        setRemoteCodeInput(dev.pairCode);
+        setSendSuccess(true);
+        setTimeout(() => {
+          setSendSuccess(false);
+          setIsSending(false);
+          setActiveTab('remote');
+        }, 1200);
+      } catch {
+        setInputCode(dev.pairCode);
+        setActiveTab('send');
+      }
+    } else {
+      const code = dev.deviceId.slice(-6).toUpperCase();
+      localStorage.setItem('stremo_paired_remote_code', code);
+      setRemoteCodeInput(code);
+      setActiveTab('remote');
+    }
+  };
 
   // Générer un code d'appairage pour cet écran
   const handleGeneratePairCode = async () => {
@@ -105,40 +179,53 @@ export const DeviceSyncModal: React.FC<Props> = ({
     return () => clearInterval(interval);
   }, [expiresAt]);
 
-  // Polling automatique pour détecter quand le smartphone/PC valide le code
+  const applySyncedData = async (data: any, channelId?: string) => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    setPairingSuccess(true);
+
+    if (channelId) {
+      localStorage.setItem('stremo_family_sync_key', channelId);
+      localStorage.setItem('stremo_continuous_sync', 'true');
+    }
+
+    try {
+      await api.importBackup(data);
+    } catch (e) {
+      console.warn('Import data error:', e);
+    }
+
+    setTimeout(() => {
+      onDataSynced();
+      onClose();
+    }, 1500);
+  };
+
+  // Synchronisation instantanée via Server-Sent Events (SSE) avec fallback polling
   useEffect(() => {
     if (activeTab !== 'receive' || !pairCode || pairingSuccess) return;
 
+    // 1. Souscription SSE en temps réel (réponse immédiate <50ms)
+    const unsubscribe = api.subscribePairEvents(pairCode, async (data) => {
+      await applySyncedData(data);
+    });
+
+    // 2. Polling de secours toutes les 2.5s si SSE n'est pas supporté par le réseau
     pollTimerRef.current = setInterval(async () => {
       try {
         const session = await api.checkPairSession(pairCode);
         if (session.status === 'paired' && session.data) {
-          clearInterval(pollTimerRef.current);
-          setPairingSuccess(true);
-
-          // Si un canal de synchronisation familial a été transmis, l'enregistrer
-          if (session.channelId) {
-            localStorage.setItem('stremo_family_sync_key', session.channelId);
-            localStorage.setItem('stremo_continuous_sync', 'true');
-          }
-
-          // Importer les profils et l'historique reçus
-          await api.importBackup(session.data);
-
-          setTimeout(() => {
-            onDataSynced();
-            onClose();
-          }, 1800);
+          await applySyncedData(session.data, session.channelId);
         } else if (session.status === 'expired') {
           clearInterval(pollTimerRef.current);
           setPairCode(null);
         }
       } catch {
-        // Ignorer les erreurs transitoires de polling
+        // Ignorer les erreurs transitoires
       }
-    }, 2000);
+    }, 2500);
 
     return () => {
+      unsubscribe();
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, [activeTab, pairCode, pairingSuccess]);
@@ -167,6 +254,10 @@ export const DeviceSyncModal: React.FC<Props> = ({
 
       await api.authorizePairSession(clean, dataToSync, currentChannel);
       setSendSuccess(true);
+      // Mémoriser pour la télécommande smartphone
+      localStorage.setItem('stremo_paired_remote_code', clean);
+      setRemoteCodeInput(clean);
+
       setTimeout(() => {
         setSendSuccess(false);
         setInputCode('');
@@ -177,6 +268,19 @@ export const DeviceSyncModal: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Envoi de commande télécommande smartphone vers l'écran TV appairé
+  const handleSendRemote = async (action: string, payload?: any) => {
+    const target = (remoteCodeInput || inputCode || pairCode || '').trim().toUpperCase();
+    if (!target) {
+      setRemoteFeedback("Entrez d'abord le code de la TV");
+      return;
+    }
+    localStorage.setItem('stremo_paired_remote_code', target);
+    setRemoteFeedback(`Action : ${action}`);
+    await api.sendRemoteCommand(target, action, payload);
+    setTimeout(() => setRemoteFeedback(null), 2000);
   };
 
   // Synchronisation continue (Push / Pull)
@@ -268,42 +372,101 @@ export const DeviceSyncModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* 3 Onglets de navigation */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-white/5 rounded-xl text-xs font-bold text-center">
+        {/* Bandeau Détection Wi-Fi Réseau Local */}
+        {lanDevices.length > 0 && (
+          <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase text-indigo-400 flex items-center gap-1.5 tracking-wider">
+                <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                {lanDevices.length} écran{lanDevices.length > 1 ? 's' : ''} détecté{lanDevices.length > 1 ? 's' : ''} sur votre Wi-Fi
+              </span>
+              <span className="text-[10px] text-slate-400">Association 1-clic sans code</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {lanDevices.map((dev) => (
+                <div
+                  key={dev.deviceId}
+                  className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-indigo-500/40 flex items-center justify-between gap-2 transition"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-600/20 text-indigo-300 flex items-center justify-center shrink-0">
+                      {dev.deviceType === 'tv' ? (
+                        <Tv className="w-3.5 h-3.5" />
+                      ) : dev.deviceType === 'mobile' ? (
+                        <Smartphone className="w-3.5 h-3.5" />
+                      ) : (
+                        <Tv className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                    <div className="truncate">
+                      <div className="text-xs font-bold text-white truncate">{dev.name}</div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {dev.ipAddress ? `IP: ${dev.ipAddress}` : 'En ligne'}
+                        {dev.pairCode ? ` • PIN: ${dev.pairCode}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleQuickConnectDevice(dev)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] shrink-0 transition cursor-pointer flex items-center gap-1 shadow-sm"
+                  >
+                    {dev.pairCode ? <CheckCircle2 className="w-3 h-3" /> : <Radio className="w-3 h-3" />}
+                    {dev.pairCode ? 'Lier 1-clic' : 'Piloter'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4 Onglets de navigation */}
+        <div className="grid grid-cols-4 gap-1 p-1 bg-white/5 rounded-xl text-xs font-bold text-center">
           <button
             onClick={() => setActiveTab('receive')}
-            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'receive'
                 ? 'bg-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Tv className="w-4 h-4 shrink-0" />
-            <span>Connecter TV</span>
+            <Tv className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">TV</span>
           </button>
 
           <button
             onClick={() => setActiveTab('send')}
-            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'send'
                 ? 'bg-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Smartphone className="w-4 h-4 shrink-0" />
-            <span>Lier un écran</span>
+            <Smartphone className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Lier</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('remote')}
+            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
+              activeTab === 'remote'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+            <span className="truncate">Télécommande</span>
           </button>
 
           <button
             onClick={() => setActiveTab('continuous')}
-            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'continuous'
                 ? 'bg-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <ShieldCheck className="w-4 h-4 shrink-0" />
-            <span>Synchro Foyer</span>
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Foyer</span>
           </button>
         </div>
 
@@ -460,7 +623,123 @@ export const DeviceSyncModal: React.FC<Props> = ({
           </form>
         )}
 
-        {/* ONGLET 3 : SYNCHRONISATION CONTINUE DU FOYER */}
+        {/* ONGLET 3 : TÉLÉCOMMANDE SMARTPHONE / TABLETTE */}
+        {activeTab === 'remote' && (
+          <div className="space-y-5 animate-fade-in">
+            <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Tv className="w-4 h-4 text-indigo-400" />
+                  Code de l'écran TV contrôlé
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">Temps réel SSE</span>
+              </div>
+              <input
+                type="text"
+                placeholder="Ex: 849215"
+                value={remoteCodeInput}
+                onChange={(e) => setRemoteCodeInput(e.target.value.toUpperCase())}
+                className="w-full text-center text-lg font-mono font-black tracking-widest py-2 px-3 rounded-xl bg-black/50 border border-white/10 text-indigo-300 focus:outline-none focus:border-indigo-400 uppercase"
+              />
+            </div>
+
+            {remoteFeedback && (
+              <div className="p-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-200 text-xs font-semibold text-center animate-fade-in flex items-center justify-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                <span>{remoteFeedback}</span>
+              </div>
+            )}
+
+            {/* Pavé de contrôle télécommande TV */}
+            <div className="space-y-3 p-4 rounded-2xl bg-black/40 border border-white/8">
+              {/* Ligne 1 : Navigation temporelle & Play/Pause */}
+              <div className="grid grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('seek', -10)}
+                  className="py-3 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 flex flex-col items-center justify-center gap-1 text-slate-200 hover:text-white transition cursor-pointer"
+                  title="Reculer de 10 secondes"
+                >
+                  <RotateCcw className="w-5 h-5 text-indigo-400" />
+                  <span className="text-[10px] font-bold">-10s</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('toggle_play')}
+                  className="py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 flex flex-col items-center justify-center gap-1 text-white shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+                  title="Lecture / Pause"
+                >
+                  <Play className="w-5 h-5 fill-white" />
+                  <span className="text-[10px] font-black uppercase">Play/Pause</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('seek', 10)}
+                  className="py-3 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 flex flex-col items-center justify-center gap-1 text-slate-200 hover:text-white transition cursor-pointer"
+                  title="Avancer de 10 secondes"
+                >
+                  <RotateCw className="w-5 h-5 text-indigo-400" />
+                  <span className="text-[10px] font-bold">+10s</span>
+                </button>
+              </div>
+
+              {/* Ligne 2 : Binge-Watching & Saut d'intro */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('skip_intro')}
+                  className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 flex items-center justify-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition cursor-pointer"
+                >
+                  <FastForward className="w-4 h-4 text-indigo-400" />
+                  <span>Passer intro</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('next_episode')}
+                  className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 flex items-center justify-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition cursor-pointer"
+                >
+                  <SkipForward className="w-4 h-4 text-indigo-400" />
+                  <span>Épisode suivant</span>
+                </button>
+              </div>
+
+              {/* Ligne 3 : Volume */}
+              <div className="grid grid-cols-3 gap-2.5 pt-1 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('volume_down')}
+                  className="py-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 text-xs font-bold transition cursor-pointer"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Vol -</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('toggle_mute')}
+                  className="py-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 text-xs font-bold transition cursor-pointer"
+                >
+                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                  <span>Muet</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendRemote('volume_up')}
+                  className="py-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 text-xs font-bold transition cursor-pointer"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Vol +</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ONGLET 4 : SYNCHRONISATION CONTINUE DU FOYER */}
         {activeTab === 'continuous' && (
           <div className="space-y-5">
             <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/5">

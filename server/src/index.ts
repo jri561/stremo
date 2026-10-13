@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { DatabaseManager } from './db.js';
 import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster } from './addonClient.js';
+import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
+import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -18,7 +20,15 @@ app.use(express.json());
 const accessKey = process.env.STREMO_ACCESS_KEY;
 if (!accessKey) console.warn('⚠️  STREMO_ACCESS_KEY non défini : API ouverte à quiconque connaît l\'URL.');
 app.use('/api', (req, res, next) => {
-  if (!accessKey || req.path === '/auth-check') return next();
+  if (
+    !accessKey ||
+    req.path === '/auth-check' ||
+    req.path.startsWith('/proxy/') ||
+    req.path.startsWith('/sync/pair/events/') ||
+    req.path.startsWith('/sync/lan/')
+  ) {
+    return next();
+  }
   if (req.header('x-stremo-key') === accessKey) return next();
   res.status(401).json({ success: false, error: 'Clé d\'accès requise' });
 });
@@ -38,9 +48,9 @@ app.get('/api/profiles', (req, res) => {
 
 app.post('/api/profiles', (req, res) => {
   try {
-    const { name, avatar, isKids, pin } = req.body;
+    const { name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     if (!name) return res.status(400).json({ error: 'Nom requis' });
-    const profile = db.createProfile(name, avatar || 'user', isKids ? 1 : 0, pin);
+    const profile = db.createProfile(name, avatar || 'user', isKids ? 1 : 0, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode);
     res.json({ success: true, profile });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -49,12 +59,15 @@ app.post('/api/profiles', (req, res) => {
 
 app.put('/api/profiles/:id', (req, res) => {
   try {
-    const { name, avatar, isKids, pin } = req.body;
+    const { name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode } = req.body;
     const updated = db.updateProfile(req.params.id, {
       name,
       avatar,
       isKids: isKids !== undefined ? (isKids ? 1 : 0) : undefined,
       pin: pin !== undefined ? (pin ? String(pin) : null) : undefined,
+      preferredAudioLanguage,
+      preferredSubtitleLanguage,
+      subtitleMode,
     });
     if (!updated) return res.status(404).json({ error: 'Profil non trouvé' });
     res.json({ success: true, profile: updated });
@@ -322,7 +335,38 @@ app.post('/api/sync/pair/authorize', (req, res) => {
     if (!success) {
       return res.status(400).json({ success: false, error: 'Code expiré ou invalide' });
     }
+    // Notification en temps réel vers l'écran TV récepteur via Server-Sent Events
+    notifyPairSuccess(cleanCode, data);
+
     res.json({ success: true, message: 'Appareil appairé avec succès !' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Écoute en temps réel de l'appairage TV & télécommande mobile via Server-Sent Events (SSE)
+app.get('/api/sync/pair/events/:code', handlePairSse);
+
+// Envoi d'une commande télécommande mobile vers l'écran TV appairé
+app.post('/api/sync/remote/:code', handleRemoteCommand);
+
+// Découverte des appareils connectés sur le même réseau local (LAN discovery)
+app.post('/api/sync/lan/announce', handleLanAnnounce);
+app.get('/api/sync/lan/devices', handleGetLanDevices);
+
+// --- PROXY DE STREAMING VIDÉO & SOUS-TITRES (CONTOURNEMENT CORS & RANGE REQUESTS) ---
+app.get('/api/proxy/stream', proxyStream);
+app.head('/api/proxy/stream', proxyStream);
+app.get('/api/proxy/subtitle', proxySubtitle);
+
+// --- TIMINGS EXACTS DE GÉNÉRIQUES (ANISKIP / COMMUNITY TIMINGS) ---
+app.get('/api/skip-times/:type/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const season = req.query.season ? Number(req.query.season) : undefined;
+    const episode = req.query.episode ? Number(req.query.episode) : undefined;
+    const timings = await getSkipTimes(id, season, episode);
+    res.json({ success: true, ...timings });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

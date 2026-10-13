@@ -139,4 +139,60 @@ test('detectTvDevice identifie fidèlement les navigateurs Smart TV et salon', a
   assert.equal(detectTvDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'), false);
 });
 
+test('api.getProxiedStreamUrl et getProxiedSubtitleUrl génèrent des URLs valides avec encodage', async () => {
+  const { api } = await import('./api.ts');
+
+  // Flux HTTP classique
+  const streamUrl = 'https://debrid.example.com/dl/video.mkv?token=secret123';
+  const proxiedStream = api.getProxiedStreamUrl(streamUrl);
+  assert.equal(proxiedStream, `/api/proxy/stream?url=${encodeURIComponent(streamUrl)}`);
+
+  // Magnet link (ne doit pas être proxifié)
+  const magnet = 'magnet:?xt=urn:btih:abcdef';
+  assert.equal(api.getProxiedStreamUrl(magnet), magnet);
+
+  // Sous-titre SRT
+  const subUrl = 'https://opensubtitles.org/sub/123.srt';
+  const proxiedSub = api.getProxiedSubtitleUrl(subUrl);
+  assert.equal(proxiedSub, `/api/proxy/subtitle?url=${encodeURIComponent(subUrl)}`);
+});
+
+test('isStreamFrenchAudio, detectStreamAudioLanguage et matchSmartSubtitle gèrent les préférences de langues', async () => {
+  const { isStreamFrenchAudio, detectStreamAudioLanguage, matchSmartSubtitle } = await import('./streams.ts');
+
+  const frenchStream = { name: 'Animals.2026.TRUEFRENCH.1080p.mkv', url: 'https://x' };
+  const englishStream = { name: 'Animals.2026.1080p.WEB-DL.DDP5.1', url: 'https://y' };
+  const japaneseStream = { name: '[Judas] One Piece - 1100 [1080p][Jap Audio]', url: 'https://z' };
+
+  // Détection audio
+  assert.equal(isStreamFrenchAudio(frenchStream), true);
+  assert.equal(isStreamFrenchAudio(englishStream), false);
+  assert.equal(detectStreamAudioLanguage(frenchStream), 'fra');
+  assert.equal(detectStreamAudioLanguage(englishStream), 'eng');
+  assert.equal(detectStreamAudioLanguage(japaneseStream), 'jpn');
+
+  // Matching intelligent de sous-titres
+  const sampleSubs = [
+    { id: 'sub_en', lang: 'eng', addonName: 'OpenSubtitles' },
+    { id: 'sub_fr', lang: 'fre', addonName: 'OpenSubtitles' },
+    { id: 'sub_es', lang: 'spa', addonName: 'OpenSubtitles' },
+  ];
+
+  // 1. Film anglais + profil français (mode foreign_only) -> doit activer les sous-titres français !
+  const matchForEnglish = matchSmartSubtitle(sampleSubs, 'fra', 'eng', 'foreign_only');
+  assert.equal(matchForEnglish?.id, 'sub_fr');
+
+  // 2. Film français + profil français (mode foreign_only) -> ne doit PAS activer de sous-titres (audio déjà FR)
+  const matchForFrench = matchSmartSubtitle(sampleSubs, 'fra', 'fra', 'foreign_only');
+  assert.equal(matchForFrench, null);
+
+  // 3. Film français + mode always -> doit activer les sous-titres français
+  const matchAlways = matchSmartSubtitle(sampleSubs, 'fra', 'fra', 'always');
+  assert.equal(matchAlways?.id, 'sub_fr');
+
+  // 4. Mode off -> aucun sous-titre
+  assert.equal(matchSmartSubtitle(sampleSubs, 'fra', 'eng', 'off'), null);
+});
+
+
 

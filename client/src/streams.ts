@@ -242,3 +242,63 @@ export function detectTvDevice(userAgent: string): boolean {
   );
 }
 
+/**
+ * Détecte si le flux est en version française (VF, VFF, VFQ, TRUEFRENCH, MULTI)
+ */
+export function isStreamFrenchAudio(stream: StreamSource): boolean {
+  const text = `${stream.name ?? ''} ${stream.description ?? ''} ${stream.title ?? ''} ${stream.behaviorHints?.filename ?? ''}`.toLowerCase();
+  return /\b(french|truefrench|vff|vfq|vf|multi)\b/i.test(text) || text.includes('🇫🇷');
+}
+
+/**
+ * Détecte la langue principale d'un flux audio
+ */
+export function detectStreamAudioLanguage(stream: StreamSource): string {
+  const text = `${stream.name ?? ''} ${stream.description ?? ''} ${stream.title ?? ''} ${stream.behaviorHints?.filename ?? ''}`.toLowerCase();
+  if (/\b(french|truefrench|vff|vfq|vf|multi)\b/i.test(text) || text.includes('🇫🇷')) return 'fra';
+  if (/\b(japanese|jap|jpn)\b/i.test(text) || text.includes('🇯🇵')) return 'jpn';
+  if (/\b(spanish|esp|espanol|castellano)\b/i.test(text) || text.includes('🇪🇸')) return 'spa';
+  if (/\b(german|deutsch)\b/i.test(text) || text.includes('🇩🇪')) return 'deu';
+  if (/\b(italian|italiano)\b/i.test(text) || text.includes('🇮🇹')) return 'ita';
+  return 'eng';
+}
+
+/**
+ * Recherche intelligente de la piste de sous-titres correspondant à la préférence utilisateur
+ */
+export function matchSmartSubtitle(
+  subtitles: any[],
+  preferredSubLang: string = 'fra',
+  streamAudioLang: string = 'eng',
+  subtitleMode: string = 'foreign_only'
+): any | null {
+  if (!subtitles || subtitles.length === 0) return null;
+  if (subtitleMode === 'off' || preferredSubLang === 'off') return null;
+
+  // Si le mode est 'foreign_only' et que l'audio est déjà dans la langue préférée de l'utilisateur
+  if (subtitleMode === 'foreign_only') {
+    const isAudioSameAsSub =
+      (preferredSubLang === 'fra' && streamAudioLang === 'fra') ||
+      (preferredSubLang === 'eng' && streamAudioLang === 'eng') ||
+      (preferredSubLang === streamAudioLang);
+
+    if (isAudioSameAsSub) {
+      return null;
+    }
+  }
+
+  const targetLangs = preferredSubLang === 'fra' || preferredSubLang === 'fr'
+    ? ['fre', 'fra', 'fr', 'french', 'français']
+    : preferredSubLang === 'eng' || preferredSubLang === 'en'
+    ? ['eng', 'en', 'english']
+    : [preferredSubLang];
+
+  const match = subtitles.find(sub => {
+    const subLang = (sub.lang || sub.id || '').toLowerCase();
+    return targetLangs.some(t => subLang === t || subLang.startsWith(t));
+  });
+
+  return match || null;
+}
+
+

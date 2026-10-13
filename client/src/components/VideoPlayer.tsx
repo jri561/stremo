@@ -31,6 +31,8 @@ import {
   getIntroTargetTime,
   getNextFallbackStream,
   parseStream,
+  detectStreamAudioLanguage,
+  matchSmartSubtitle,
 } from '../streams';
 
 export interface NextEpisodeInfo {
@@ -131,6 +133,18 @@ export const VideoPlayer: React.FC<Props> = ({
   const [showSkipMenu, setShowSkipMenu] = useState(false);
   const [skipToast, setSkipToast] = useState<string | null>(null);
 
+  // Timings précis de génériques (AniSkip / Community Timings)
+  const [exactSkip, setExactSkip] = useState<{
+    intro?: { start: number; end: number };
+    outro?: { start: number; end: number };
+  } | null>(null);
+
+  // Proxy de streaming vidéo (contournement CORS & compatibilité Web)
+  const triedProxyRef = useRef(false);
+  const [useStreamProxy, setUseStreamProxy] = useState<boolean>(() => {
+    return localStorage.getItem('stremo_use_stream_proxy') === 'true';
+  });
+
   // Mode Nuit & Boost Dialogues (Dynamics Compression)
   const [nightMode, setNightMode] = useState<boolean>(() => {
     return localStorage.getItem('stremo_night_mode') === 'true';
@@ -225,6 +239,102 @@ export const VideoPlayer: React.FC<Props> = ({
     return () => clearTimeout(timer);
   }, [fallbackCountdown, fallbackStream, onSelectStream]);
 
+  // Récupération des timecodes précis de génériques (AniSkip ou communautaires)
+  useEffect(() => {
+    if (!mediaInfo) return;
+    const mediaId = mediaInfo.imdbId || (mediaInfo.tmdbId ? String(mediaInfo.tmdbId) : '') || mediaInfo.title;
+    if (!mediaId) return;
+
+    api.getSkipTimes(mediaId, mediaInfo.season, mediaInfo.episode)
+      .then((res) => {
+        if (res && res.found) {
+          setExactSkip(res);
+        } else {
+          setExactSkip(null);
+        }
+      })
+      .catch(() => setExactSkip(null));
+  }, [mediaInfo]);
+
+  // Sélection automatique intelligente des sous-titres selon la langue du flux et les préférences
+  useEffect(() => {
+    if (!subtitles || subtitles.length === 0) return;
+
+    const currentStreamObj: StreamSource = availableStreams?.find((s) => s.url === streamUrl) || {
+      name: title,
+      url: streamUrl,
+      addonName: 'Lecteur',
+    };
+    const streamAudioLang = detectStreamAudioLanguage(currentStreamObj);
+    const preferredSubLang = localStorage.getItem('stremo_pref_sub_lang') || 'fra';
+    const subtitleMode = localStorage.getItem('stremo_pref_sub_mode') || 'foreign_only';
+
+    const matched = matchSmartSubtitle(subtitles, preferredSubLang, streamAudioLang, subtitleMode);
+    if (matched) {
+      setSelectedSub(matched.id);
+      setSkipToast(`Sous-titres ${matched.lang?.toUpperCase() || 'FR'} activés 💬`);
+      setTimeout(() => setSkipToast(null), 2500);
+    }
+  }, [subtitles, streamUrl]);
+
+  // Activation réelle des pistes textTracks HTML5
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks) return;
+
+    for (let i = 0; i < video.textTracks.length; i++) {
+      const track = video.textTracks[i];
+      const matchingSub = subtitles[i];
+      if (matchingSub && matchingSub.id === selectedSub) {
+        track.mode = 'showing';
+      } else {
+        track.mode = 'disabled';
+      }
+    }
+  }, [selectedSub, subtitles]);
+
+  // Écoute des commandes de télécommande mobile en direct (SSE)
+  useEffect(() => {
+    const pairedCode = localStorage.getItem('stremo_paired_remote_code');
+    if (!pairedCode) return;
+
+    const unsubscribe = api.subscribePairEvents(
+      pairedCode,
+      () => {},
+      (cmd: any) => {
+        if (!cmd || !cmd.action) return;
+        const video = videoRef.current;
+        if (!video) return;
+
+        if (cmd.action === 'toggle_play') {
+          if (video.paused) {
+            video.play().catch(() => {});
+            setIsPlaying(true);
+          } else {
+            video.pause();
+            setIsPlaying(false);
+          }
+        } else if (cmd.action === 'seek') {
+          const delta = Number(cmd.payload) || 10;
+          video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + delta));
+        } else if (cmd.action === 'skip_intro') {
+          handleSkipIntro();
+        } else if (cmd.action === 'next_episode') {
+          handleSkipToNextEpisode();
+        } else if (cmd.action === 'toggle_mute') {
+          video.muted = !video.muted;
+          setIsMuted(video.muted);
+        } else if (cmd.action === 'volume_up') {
+          video.volume = Math.min(1, video.volume + 0.1);
+        } else if (cmd.action === 'volume_down') {
+          video.volume = Math.max(0, video.volume - 0.1);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [duration]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -236,14 +346,17 @@ export const VideoPlayer: React.FC<Props> = ({
     hasAutoSkippedIntroRef.current = false;
     setBuffering(true);
 
-    const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('hls');
+    const effectiveStreamUrl = useStreamProxy ? api.getProxiedStreamUrl(streamUrl) : streamUrl;
+    triedProxyRef.current = useStreamProxy;
+
+    const isHls = effectiveStreamUrl.includes('.m3u8') || effectiveStreamUrl.includes('hls');
 
     if (isHls && Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
       });
-      hls.loadSource(streamUrl);
+      hls.loadSource(effectiveStreamUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setBuffering(false);
@@ -257,13 +370,23 @@ export const VideoPlayer: React.FC<Props> = ({
         }
       });
     } else {
-      video.src = streamUrl;
+      video.src = effectiveStreamUrl;
       video.onloadedmetadata = () => {
         setBuffering(false);
         if (initialTime > 0) video.currentTime = initialTime;
         video.play().catch(() => setIsPlaying(false));
       };
       video.onerror = () => {
+        // Tentative automatique de fallback sur le proxy local (contourne les erreurs CORS des CDN)
+        if (!triedProxyRef.current && !streamUrl.includes('/api/proxy/stream')) {
+          triedProxyRef.current = true;
+          const proxied = api.getProxiedStreamUrl(streamUrl);
+          setSkipToast("Contournement CORS : bascule sur le proxy local...");
+          video.src = proxied;
+          video.load();
+          video.play().catch(() => {});
+          return;
+        }
         triggerPlaybackError('Format vidéo ou codec audio (ex: DTS / AC3 / HEVC) non décodable directement dans ce navigateur.');
       };
     }
@@ -283,8 +406,17 @@ export const VideoPlayer: React.FC<Props> = ({
       onProgress(curr, dur);
     }
 
-    // Saut automatique du générique d'ouverture (Intro) pour les séries
-    if (
+    // Saut précis AniSkip si disponible, sinon heuristique
+    if (exactSkip?.intro && autoSkipIntro && !hasAutoSkippedIntroRef.current) {
+      if (curr >= exactSkip.intro.start && curr < exactSkip.intro.end) {
+        hasAutoSkippedIntroRef.current = true;
+        if (videoRef.current) {
+          videoRef.current.currentTime = exactSkip.intro.end;
+          setSkipToast("Opening sauté automatiquement (AniSkip) ⏭️");
+          setTimeout(() => setSkipToast(null), 2500);
+        }
+      }
+    } else if (
       (isSeries || mediaInfo?.type === 'episode') &&
       autoSkipIntro &&
       !hasAutoSkippedIntroRef.current &&
@@ -299,8 +431,12 @@ export const VideoPlayer: React.FC<Props> = ({
       }
     }
 
-    // Détection automatique du début du générique de fin pour séries
-    if (nextEpisode && onPlayNextEpisode && !nextDeclined && isOutroCreditsDetected(curr, dur, skipOutroSec)) {
+    // Détection Outro précis AniSkip si disponible, sinon heuristique
+    if (exactSkip?.outro && nextEpisode && onPlayNextEpisode && !nextDeclined) {
+      if (curr >= exactSkip.outro.start && nextCountdown === null && autoSkipOutro) {
+        setNextCountdown(10);
+      }
+    } else if (nextEpisode && onPlayNextEpisode && !nextDeclined && isOutroCreditsDetected(curr, dur, skipOutroSec)) {
       if (nextCountdown === null && autoSkipOutro) {
         setNextCountdown(10);
       }
@@ -606,7 +742,7 @@ export const VideoPlayer: React.FC<Props> = ({
             kind="subtitles"
             label={`${sub.lang} (${sub.addonName || 'OpenSubtitles'})`}
             srcLang={sub.lang}
-            src={sub.url}
+            src={api.getProxiedSubtitleUrl(sub.url)}
             default={selectedSub === sub.id}
           />
         ))}
@@ -1064,6 +1200,34 @@ export const VideoPlayer: React.FC<Props> = ({
                             +{sec}s
                           </button>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* Proxy Web Anti-CORS */}
+                    <div className="pt-2 border-t border-white/5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white block">Proxy Web (anti-CORS)</span>
+                          <span className="text-[10px] text-slate-400 block">Contourne les restrictions CDN distantes</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const next = !useStreamProxy;
+                            setUseStreamProxy(next);
+                            localStorage.setItem('stremo_use_stream_proxy', String(next));
+                            setSkipToast(next ? "Proxy Web activé" : "Proxy Web désactivé");
+                            setTimeout(() => setSkipToast(null), 2000);
+                          }}
+                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                            useStreamProxy ? 'bg-indigo-600' : 'bg-white/20'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                              useStreamProxy ? 'translate-x-5' : ''
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
 

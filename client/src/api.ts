@@ -43,6 +43,9 @@ export interface Profile {
   avatar: string;
   isKids: number;
   pin?: string | null;
+  preferredAudioLanguage?: string;
+  preferredSubtitleLanguage?: string;
+  subtitleMode?: string;
 }
 
 export interface WatchProgress {
@@ -175,18 +178,34 @@ export const api = {
     const data = await res.json();
     return data.profiles || [];
   },
-  createProfile: async (name: string, avatar: string, isKids = false, pin?: string): Promise<Profile> => {
+  createProfile: async (
+    name: string,
+    avatar: string,
+    isKids = false,
+    pin?: string,
+    preferredAudioLanguage?: string,
+    preferredSubtitleLanguage?: string,
+    subtitleMode?: string
+  ): Promise<Profile> => {
     const res = await fetch(`${API_BASE}/profiles`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, avatar, isKids, pin }),
+      body: JSON.stringify({ name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode }),
     });
     const data = await res.json();
     return data.profile;
   },
   updateProfile: async (
     id: string,
-    updates: { name?: string; avatar?: string; isKids?: boolean; pin?: string | null }
+    updates: {
+      name?: string;
+      avatar?: string;
+      isKids?: boolean;
+      pin?: string | null;
+      preferredAudioLanguage?: string;
+      preferredSubtitleLanguage?: string;
+      subtitleMode?: string;
+    }
   ): Promise<Profile> => {
     const res = await fetch(`${API_BASE}/profiles/${id}`, {
       method: 'PUT',
@@ -415,7 +434,108 @@ export const api = {
     });
     return res.json();
   },
+  getProxiedStreamUrl: (originalUrl: string): string => {
+    if (!originalUrl || originalUrl.startsWith('magnet:')) return originalUrl;
+    return `${API_BASE}/proxy/stream?url=${encodeURIComponent(originalUrl)}`;
+  },
+  getProxiedSubtitleUrl: (originalUrl: string): string => {
+    if (!originalUrl) return originalUrl;
+    return `${API_BASE}/proxy/subtitle?url=${encodeURIComponent(originalUrl)}`;
+  },
+  getSkipTimes: async (
+    id: string,
+    season?: number,
+    episode?: number
+  ): Promise<{ found: boolean; intro?: { start: number; end: number }; outro?: { start: number; end: number } }> => {
+    try {
+      const q = new URLSearchParams();
+      if (season) q.set('season', String(season));
+      if (episode) q.set('episode', String(episode));
+      const res = await fetch(`${API_BASE}/skip-times/series/${encodeURIComponent(id)}?${q.toString()}`);
+      if (!res.ok) return { found: false };
+      return res.json();
+    } catch {
+      return { found: false };
+    }
+  },
+  sendRemoteCommand: async (code: string, action: string, payload?: any): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/sync/remote/${encodeURIComponent(code)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+  subscribePairEvents: (
+    code: string,
+    onPaired: (data: any) => void,
+    onRemote?: (cmd: any) => void
+  ): (() => void) => {
+    if (typeof EventSource === 'undefined') return () => {};
+    const es = new EventSource(`${API_BASE}/sync/pair/events/${encodeURIComponent(code)}`);
+
+    es.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'paired' && payload.data) {
+          onPaired(payload.data);
+        } else if (payload.type === 'remote' && onRemote) {
+          onRemote(payload.command || payload);
+        }
+      } catch {
+        // Ignorer message ping ou non-JSON
+      }
+    };
+
+    return () => {
+      es.close();
+    };
+  },
+  announceLanDevice: async (device: {
+    deviceId: string;
+    name: string;
+    deviceType: 'tv' | 'mobile' | 'desktop';
+    activeProfileName?: string;
+    pairCode?: string;
+  }): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/sync/lan/announce`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(device),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+  getLanDevices: async (excludeDeviceId?: string): Promise<LanDevice[]> => {
+    try {
+      const query = excludeDeviceId ? `?exclude=${encodeURIComponent(excludeDeviceId)}` : '';
+      const res = await fetch(`${API_BASE}/sync/lan/devices${query}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.devices || [];
+    } catch {
+      return [];
+    }
+  },
 };
+
+export interface LanDevice {
+  deviceId: string;
+  name: string;
+  deviceType: 'tv' | 'mobile' | 'desktop';
+  ipAddress?: string;
+  userAgent?: string;
+  activeProfileName?: string;
+  pairCode?: string;
+  lastSeen: number;
+}
 
 export interface TraktAuthInfo {
   profileId: string;

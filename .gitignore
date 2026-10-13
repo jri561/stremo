@@ -39,5 +39,7 @@ logs/
 *.njsproj
 *.sln
 *.sw?
-.DS_Store
-Thumbs.db
+# Tests et rapports
+test-results/
+client/test-results/
+audit_screenshots/

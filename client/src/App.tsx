@@ -326,6 +326,15 @@ export function App() {
   const handleSelectProfile = (p: Profile) => {
     setActiveProfile(p);
     localStorage.setItem('stremo_active_profile', p.id);
+    if (p.preferredAudioLanguage) {
+      localStorage.setItem('stremo_pref_audio_lang', p.preferredAudioLanguage);
+    }
+    if (p.preferredSubtitleLanguage) {
+      localStorage.setItem('stremo_pref_sub_lang', p.preferredSubtitleLanguage);
+    }
+    if (p.subtitleMode) {
+      localStorage.setItem('stremo_pref_sub_mode', p.subtitleMode);
+    }
   };
 
   const handleProfileSwitch = (target: Profile) => {
@@ -353,20 +362,39 @@ export function App() {
     }
   };
 
-  const handleCreateProfile = async (name: string, avatar: string, isKids: boolean, pin?: string) => {
-    const created = await api.createProfile(name, avatar, isKids, pin);
+  const handleCreateProfile = async (
+    name: string,
+    avatar: string,
+    isKids: boolean,
+    pin?: string,
+    preferredAudioLanguage?: string,
+    preferredSubtitleLanguage?: string,
+    subtitleMode?: string
+  ) => {
+    const created = await api.createProfile(name, avatar, isKids, pin, preferredAudioLanguage, preferredSubtitleLanguage, subtitleMode);
     setProfiles((prev) => [...prev, created]);
     handleSelectProfile(created);
   };
 
   const handleUpdateProfile = async (
     id: string,
-    updates: { name: string; avatar: string; isKids: boolean; pin?: string | null }
+    updates: {
+      name: string;
+      avatar: string;
+      isKids: boolean;
+      pin?: string | null;
+      preferredAudioLanguage?: string;
+      preferredSubtitleLanguage?: string;
+      subtitleMode?: string;
+    }
   ) => {
     const updated = await api.updateProfile(id, updates);
     setProfiles((prev) => prev.map((p) => (p.id === id ? updated : p)));
     if (activeProfile?.id === id) {
       setActiveProfile(updated);
+      if (updated.preferredAudioLanguage) localStorage.setItem('stremo_pref_audio_lang', updated.preferredAudioLanguage);
+      if (updated.preferredSubtitleLanguage) localStorage.setItem('stremo_pref_sub_lang', updated.preferredSubtitleLanguage);
+      if (updated.subtitleMode) localStorage.setItem('stremo_pref_sub_mode', updated.subtitleMode);
     }
   };
 
@@ -887,6 +915,23 @@ export function App() {
                           p.duration > 0 ? (p.currentTime / p.duration) * 100 : 0,
                       }))}
                       onSelectItem={(item) => handleOpenMedia(item)}
+                    />
+                  )}
+
+                  {/* Ligne "Ma Liste (Favoris)" */}
+                  {libraryList.length > 0 && (
+                    <CatalogRow
+                      title="Ma Liste"
+                      subtitle={`Favoris enregistrés (${activeProfile.name})`}
+                      items={libraryList.map((item) => ({
+                        id: item.mediaId,
+                        type: item.mediaType,
+                        name: item.title,
+                        poster: item.poster,
+                        year: item.year,
+                      }))}
+                      onSelectItem={(item) => handleOpenMedia(item)}
+                      onSeeAll={() => setActiveNav('library')}
                     />
                   )}
 
