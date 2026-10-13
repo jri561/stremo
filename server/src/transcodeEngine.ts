@@ -1,6 +1,8 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type { Request, Response } from 'express';
-import { isSafePlayableUrl } from './addonClient.js';
+import { isPublicHttpUrl, isSafePlayableUrl } from './addonClient.js';
+import { isTunnelRequest } from './auth.js';
+import { extractInfoHash, toMagnetUri } from './torrentEngine.js';
 
 export interface StreamProbeResult {
   hasVideo: boolean;
@@ -11,204 +13,199 @@ export interface StreamProbeResult {
   duration?: number;
 }
 
+export type TranscodeMode = 'audio' | 'full';
+
+/** Nombre maximal de transcodages simultanés (protège le CPU de la machine). */
+const MAX_CONCURRENT_JOBS = 3;
+const MAX_START_TIME_S = 24 * 3600;
+const USER_AGENT = 'VLC/3.0.18 LibVLC/3.0.18';
+/** Protocoles autorisés en entrée : jamais `file:`, `concat:`, `data:`, etc. */
+const PROTOCOL_WHITELIST = 'http,https,tcp,tls,crypto';
+
+/**
+ * Résout l'entrée d'ffmpeg :
+ * - magnet / infoHash → flux local du moteur torrent (127.0.0.1, interne uniquement)
+ * - URL http(s) publique → telle quelle (adresses locales acceptées seulement si `allowLocal`,
+ *   c'est-à-dire pour une requête venant de la machine elle-même et non d'un tunnel public)
+ * - tout le reste (file:, localhost, etc.) → null
+ */
+export function resolveTranscodeInput(raw: unknown, port: string | number, accessKey?: string, allowLocal = false): string | null {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4000) return null;
+  if (extractInfoHash(raw)) {
+    const magnet = toMagnetUri(raw);
+    if (!magnet) return null;
+    let url = `http://127.0.0.1:${port}/api/torrent/stream?magnet=${encodeURIComponent(magnet)}`;
+    if (accessKey) url += `&k=${encodeURIComponent(accessKey)}`;
+    return url;
+  }
+  if (allowLocal) return isSafePlayableUrl(raw) && !raw.startsWith('magnet:') ? raw : null;
+  return isPublicHttpUrl(raw, true) ? raw : null;
+}
+
+/** Arguments ffmpeg : première piste vidéo + première piste audio, sans sous-titres, MP4 fragmenté vers stdout. */
+export function buildFfmpegArgs(opts: { input: string; startTime?: number; mode?: TranscodeMode }): string[] {
+  const start = Number.isFinite(opts.startTime) ? Math.min(Math.max(opts.startTime as number, 0), MAX_START_TIME_S) : 0;
+  const args = [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-nostdin',
+    '-protocol_whitelist', PROTOCOL_WHITELIST,
+    '-user_agent', USER_AGENT,
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+  ];
+  if (start > 0) args.push('-ss', String(start));
+  args.push('-i', opts.input, '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn');
+  if (opts.mode === 'full') {
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+  } else {
+    // Copie vidéo pure (aucun coût CPU), seul l'audio est converti
+    args.push('-c:v', 'copy');
+  }
+  args.push(
+    '-c:a', 'aac', '-b:a', '192k', '-ac', '2',
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    '-f', 'mp4',
+    'pipe:1'
+  );
+  return args;
+}
+
 export class TranscodeEngine {
-  private ffmpegPath: string;
-  private ffprobePath: string;
+  private ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+  private ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
   private available: boolean | null = null;
+  private jobs = new Set<ChildProcess>();
 
-  constructor() {
-    this.ffmpegPath = process.env.FFMPEG_PATH || '/home/toto/.local/bin/ffmpeg';
-    this.ffprobePath = process.env.FFPROBE_PATH || '/home/toto/.local/bin/ffprobe';
-  }
-
-  /**
-   * Vérifie la disponibilité du binaire FFmpeg sur la machine hôte
-   */
-  public async isAvailable(): Promise<boolean> {
-    if (this.available !== null) return this.available;
-
+  /** Vérifie (une seule fois) que le binaire FFmpeg est exécutable. */
+  public isAvailable(): Promise<boolean> {
+    if (this.available !== null) return Promise.resolve(this.available);
     return new Promise((resolve) => {
+      const done = (ok: boolean) => {
+        this.available = ok;
+        resolve(ok);
+      };
       try {
-        const proc = spawn(this.ffmpegPath, ['-version']);
-        proc.on('error', () => {
-          this.available = false;
-          resolve(false);
-        });
-        proc.on('close', (code) => {
-          this.available = code === 0;
-          resolve(this.available);
-        });
+        const proc = spawn(this.ffmpegPath, ['-version'], { stdio: 'ignore' });
+        proc.on('error', () => done(false));
+        proc.on('close', (code) => done(code === 0));
       } catch {
-        this.available = false;
-        resolve(false);
+        done(false);
       }
     });
   }
 
-  /**
-   * Analyse rapide (probe) des pistes audio et vidéo d'un flux distant
-   */
-  public async probe(inputUrl: string, timeoutMs = 8000): Promise<StreamProbeResult | null> {
-    const isAvail = await this.isAvailable();
-    if (!isAvail) return null;
-
-    return new Promise((resolve) => {
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve(null);
-        }
-      }, timeoutMs);
-
-      try {
-        const args = [
-          '-v', 'quiet',
-          '-print_format', 'json',
-          '-show_streams',
-          '-show_format',
-          inputUrl,
-        ];
-        const proc = spawn(this.ffprobePath, args);
-        let stdout = '';
-
-        proc.stdout.on('data', (chunk) => {
-          stdout += chunk.toString();
-        });
-
-        proc.on('error', () => {
-          clearTimeout(timeout);
-          if (!resolved) {
-            resolved = true;
-            resolve(null);
-          }
-        });
-
-        proc.on('close', (code) => {
-          clearTimeout(timeout);
-          if (resolved) return;
-          resolved = true;
-          if (code !== 0 || !stdout) {
-            resolve(null);
-            return;
-          }
-
-          try {
-            const data = JSON.parse(stdout);
-            const streams = data.streams || [];
-            const vStream = streams.find((s: any) => s.codec_type === 'video');
-            const aStream = streams.find((s: any) => s.codec_type === 'audio');
-            const duration = Number(data.format?.duration) || undefined;
-
-            resolve({
-              hasVideo: !!vStream,
-              videoCodec: vStream?.codec_name,
-              hasAudio: !!aStream,
-              audioCodec: aStream?.codec_name,
-              channels: aStream?.channels,
-              duration,
-            });
-          } catch {
-            resolve(null);
-          }
-        });
-      } catch {
-        clearTimeout(timeout);
-        resolve(null);
-      }
-    });
+  public get activeJobs(): number {
+    return this.jobs.size;
   }
 
-  /**
-   * Diffuse le flux transcodé / remuxé en fragmented MP4
-   */
-  public async handleTranscode(req: Request, res: Response): Promise<void> {
-    const isAvail = await this.isAvailable();
-    if (!isAvail) {
-      res.status(503).json({ error: 'Moteur FFmpeg non disponible sur le serveur' });
-      return;
-    }
+  /** Analyse rapide des pistes d'un flux distant (null si indisponible, invalide ou trop lent). */
+  public async probe(rawInput: string, timeoutMs = 8000, allowLocal = false): Promise<StreamProbeResult | null> {
+    const port = process.env.PORT || '3001';
+    const input = resolveTranscodeInput(rawInput, port, process.env.STREMO_ACCESS_KEY, allowLocal);
+    if (!input || !(await this.isAvailable())) return null;
 
-    const rawUrl = (req.query.url as string) || '';
-    if (!rawUrl) {
-      res.status(400).json({ error: 'Paramètre url requis' });
-      return;
-    }
-
-    // Résolution de l'URL cible
-    let targetInputUrl = rawUrl;
-    if (rawUrl.startsWith('magnet:') || /^[a-fA-F0-9]{40}$/.test(rawUrl.trim())) {
-      // Pour un torrent, on pointe vers notre endpoint de streaming local
-      const serverPort = process.env.PORT || '3001';
-      targetInputUrl = `http://127.0.0.1:${serverPort}/api/torrent/stream?magnet=${encodeURIComponent(rawUrl)}`;
-    } else if (!isSafePlayableUrl(rawUrl)) {
-      res.status(400).json({ error: 'URL invalide ou non sécurisée' });
-      return;
-    }
-
-    const startTime = Math.max(0, parseFloat(req.query.startTime as string) || 0);
-    const mode = (req.query.mode as string) || 'audio'; // 'audio' (copy video, aac audio) ou 'full' (x264, aac)
-
-    const args: string[] = [
-      '-hide_banner',
-      '-loglevel', 'error',
-    ];
-
-    if (startTime > 0) {
-      args.push('-ss', String(startTime));
-    }
-
-    args.push('-i', targetInputUrl);
-
-    if (mode === 'full') {
-      args.push(
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
-        '-pix_fmt', 'yuv420p'
+    return new Promise((resolve) => {
+      let stdout = '';
+      let settled = false;
+      const proc = spawn(
+        this.ffprobePath,
+        ['-v', 'quiet', '-protocol_whitelist', PROTOCOL_WHITELIST, '-print_format', 'json', '-show_streams', '-show_format', input],
+        { stdio: ['ignore', 'pipe', 'ignore'] }
       );
-    } else {
-      // Copie vidéo pure (0% charge CPU), conversion audio universelle AAC stéréo
-      args.push('-c:v', 'copy');
+      const finish = (value: StreamProbeResult | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        proc.kill('SIGKILL');
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), timeoutMs);
+
+      proc.stdout!.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+      proc.on('error', () => finish(null));
+      proc.on('close', (code) => {
+        if (code !== 0 || !stdout) return finish(null);
+        try {
+          const data = JSON.parse(stdout);
+          const streams: any[] = data.streams ?? [];
+          const video = streams.find((s) => s.codec_type === 'video');
+          const audio = streams.find((s) => s.codec_type === 'audio');
+          const duration = Number(data.format?.duration);
+          finish({
+            hasVideo: !!video,
+            videoCodec: video?.codec_name,
+            hasAudio: !!audio,
+            audioCodec: audio?.codec_name,
+            channels: audio?.channels,
+            duration: Number.isFinite(duration) && duration > 0 ? duration : undefined,
+          });
+        } catch {
+          finish(null);
+        }
+      });
+    });
+  }
+
+  /** Diffuse le flux remuxé / transcodé en MP4 fragmenté. */
+  public async handleTranscode(req: Request, res: Response): Promise<void> {
+    const port = process.env.PORT || '3001';
+    const input = resolveTranscodeInput(req.query.url, port, process.env.STREMO_ACCESS_KEY, !isTunnelRequest(req.headers));
+    if (!input) {
+      res.status(400).json({ success: false, error: 'URL http(s) publique ou magnet requise' });
+      return;
+    }
+    if (!(await this.isAvailable())) {
+      res.status(503).json({ success: false, error: 'FFmpeg non disponible sur le serveur' });
+      return;
     }
 
-    args.push(
-      '-c:a', 'aac',
-      '-b:a', '192k',
-      '-ac', '2',
-      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-      '-f', 'mp4',
-      'pipe:1'
-    );
+    const mode: TranscodeMode = req.query.mode === 'full' ? 'full' : 'audio';
+    const startTime = Number(req.query.startTime ?? 0);
+    if (!Number.isFinite(startTime) || startTime < 0) {
+      res.status(400).json({ success: false, error: 'startTime invalide' });
+      return;
+    }
 
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Transfer-Encoding', 'chunked');
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    if (this.jobs.size >= MAX_CONCURRENT_JOBS) {
+      res.status(429).setHeader('Retry-After', '10');
+      res.json({ success: false, error: 'Trop de transcodages simultanés, réessayez dans quelques secondes' });
+      return;
+    }
 
-    const ffmpegProc = spawn(this.ffmpegPath, args);
-
-    ffmpegProc.stdout.pipe(res);
-
-    ffmpegProc.stderr.on('data', (err) => {
-      console.warn('[FFmpeg Transcode]', err.toString().trim());
+    const proc = spawn(this.ffmpegPath, buildFfmpegArgs({ input, startTime, mode }), {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    this.jobs.add(proc);
+    let stderr = '';
+    proc.stderr!.on('data', (chunk) => {
+      stderr = (stderr + chunk.toString()).slice(-2000);
+    });
+    proc.on('error', (err) => {
+      console.error('Erreur lancement FFmpeg:', err.message);
+      this.jobs.delete(proc);
+      if (!res.headersSent) res.status(500).json({ success: false, error: 'Erreur lors du transcodage vidéo' });
+      else res.destroy();
+    });
+    proc.on('close', (code, signal) => {
+      this.jobs.delete(proc);
+      if (code && signal !== 'SIGKILL') console.warn('[FFmpeg] arrêt code', code, stderr.trim());
+      if (!res.writableEnded) res.end();
     });
 
-    ffmpegProc.on('error', (err) => {
-      console.error('Erreur lancement FFmpeg:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Erreur lors du transcodage vidéo' });
-      }
-    });
-
-    // Nettoyage immédiat du processus FFmpeg dès déconnexion du client
-    req.on('close', () => {
-      try {
-        ffmpegProc.kill('SIGKILL');
-      } catch {
-        // Ignorer si déjà arrêté
-      }
-    });
+    proc.stdout!.pipe(res);
+    // Déconnexion client (seek, fermeture du lecteur) : on libère immédiatement le CPU
+    res.on('close', () => proc.kill('SIGKILL'));
   }
 }
 

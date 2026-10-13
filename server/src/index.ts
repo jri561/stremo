@@ -5,11 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { DatabaseManager } from './db.js';
-import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster } from './addonClient.js';
+import { AddonClient, maskAddonUrl, isSafePlayableUrl, normalizePoster, buildMagnet } from './addonClient.js';
 import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
 import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
 import { torrentEngine } from './torrentEngine.js';
 import { transcodeEngine } from './transcodeEngine.js';
+import { isAuthorized, keysMatch, isTunnelRequest, isLocalSocket } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -22,22 +23,11 @@ app.use(express.json());
 const accessKey = process.env.STREMO_ACCESS_KEY;
 if (!accessKey) console.warn('⚠️  STREMO_ACCESS_KEY non défini : API ouverte à quiconque connaît l\'URL.');
 app.use('/api', (req, res, next) => {
-  if (
-    !accessKey ||
-    req.path === '/auth-check' ||
-    req.path.startsWith('/proxy/') ||
-    req.path.startsWith('/torrent/') ||
-    req.path.startsWith('/transcode/') ||
-    req.path.startsWith('/sync/pair/events/') ||
-    req.path.startsWith('/sync/lan/')
-  ) {
-    return next();
-  }
-  if (req.header('x-stremo-key') === accessKey) return next();
+  if (isAuthorized(accessKey, req.path, req.header('x-stremo-key'), req.query.k)) return next();
   res.status(401).json({ success: false, error: 'Clé d\'accès requise' });
 });
 app.get('/api/auth-check', (req, res) => {
-  res.json({ success: true, required: !!accessKey, ok: !accessKey || req.header('x-stremo-key') === accessKey });
+  res.json({ success: true, required: !!accessKey, ok: !accessKey || keysMatch(accessKey, req.header('x-stremo-key')) });
 });
 
 // --- PROFILES ---
@@ -435,9 +425,9 @@ app.get('/api/transcode/capabilities', async (_req, res) => {
   res.json({ success: true, available });
 });
 app.get('/api/transcode/probe', async (req, res) => {
-  const url = req.query.url as string;
-  if (!url) return res.status(400).json({ error: 'URL requise' });
-  const probe = await transcodeEngine.probe(url);
+  const url = req.query.url;
+  if (typeof url !== 'string' || !url) return res.status(400).json({ success: false, error: 'URL requise' });
+  const probe = await transcodeEngine.probe(url, 8000, !isTunnelRequest(req.headers));
   res.json({ success: true, probe });
 });
 app.get('/api/transcode/stream', (req, res) => transcodeEngine.handleTranscode(req, res));
@@ -596,7 +586,7 @@ app.get('/api/streams/:type/:id', async (req, res) => {
     const streams = await new AddonClient(addon.url, db).getStreams(type, id);
     return streams.map(s => ({
       ...s,
-      url: s.url || (s.infoHash ? `magnet:?xt=urn:btih:${s.infoHash}` : undefined),
+      url: s.url || buildMagnet(s),
       addonName: addon.name,
     }));
   }));
@@ -627,8 +617,8 @@ app.post('/api/cache/purge', (_req, res) => {
 // 4. Lancement direct dans le lecteur local (VLC / MPV / Système par défaut sur Linux Desktop)
 app.post('/api/play-external', (req, res) => {
   const { url, title, startTime, player = 'vlc' } = req.body;
-  // Lancer un processus local n'est autorisé que depuis la machine elle-même (pas via le tunnel public)
-  if (req.header('x-forwarded-for') || req.header('cf-connecting-ip') || req.header('x-forwarded-host')) {
+  // Lancer un processus local n'est autorisé que depuis la machine locale elle-même
+  if (isTunnelRequest(req.headers) || !isLocalSocket(req.socket.remoteAddress)) {
     return res.status(403).json({ error: 'Lecteur externe réservé à l\'appareil local' });
   }
   if (!isSafePlayableUrl(url)) return res.status(400).json({ error: 'URL invalide (http, https ou magnet)' });

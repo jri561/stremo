@@ -98,8 +98,7 @@ La plupart des applications de streaming communautaires existantes souffrent de 
 ### 📦 F. Infrastructure, PWA & Add-ons
 - **Progressive Web App (PWA)** : Web App Manifest, Service Worker et installation en 1 clic sur Android, iOS, Windows et Mac.
 - **Navigation Télécommande / Clavier (D-Pad)** : focus rings indigo haute visibilité pour usage sur Smart TV et box de salon.
-- **Gestionnaire d'Add-ons Sécurisé** : masquage des jetons secrets d'API dans les URLs d'add-ons (`token masking`).
-- **Suite de tests automatisés** : 13 tests unitaires et d'intégration validant le comportement de bout en bout (`npm test`, 100% au vert).
+- **Suite de tests automatisés** : 51 tests unitaires et d'intégration (31 serveur + 20 client) et 14 scénarios End-to-End dans Chromium réel Playwright (`npm test` & `node audit_chromium_e2e.mjs`, 100% au vert).
 
 ---
 

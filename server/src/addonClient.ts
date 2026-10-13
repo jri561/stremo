@@ -58,6 +58,7 @@ export interface StremioStream {
   title?: string;
   infoHash?: string;
   fileIdx?: number;
+  sources?: string[];
   url?: string;
   ytId?: string;
   behaviorHints?: {
@@ -252,6 +253,64 @@ export function isSafePlayableUrl(url: unknown): url is string {
   } catch {
     return false;
   }
+}
+
+export function isPrivateIp(host: string): boolean {
+  if (/^10\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  return false;
+}
+
+/**
+ * URL http(s) distante utilisable par le proxy / le transcodeur :
+ * refuse les cibles locales (boucle locale, lien-local, adresse nulle) pour éviter le SSRF.
+ * Si blockPrivateRanges est activé (ex: requêtes provenant d'un tunnel public),
+ * les sous-réseaux privés RFC 1918 sont également rejetés pour empêcher le scan du LAN.
+ */
+export function isPublicHttpUrl(url: unknown, blockPrivateRanges = false): url is string {
+  if (!isSafePlayableUrl(url) || url.startsWith('magnet:')) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0' || host === '::' || host === '::1') return false;
+    if (/^127\./.test(host) || /^169\.254\./.test(host) || /^0\./.test(host)) return false;
+    if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe80:/.test(host)) return false;
+    if (blockPrivateRanges && isPrivateIp(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Trackers publics ajoutés aux magnets reconstruits (le DHT seul est trop lent au démarrage). */
+export const DEFAULT_TRACKERS = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.tracker.cl:1337/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://exodus.desync.com:6969/announce',
+];
+
+/**
+ * Reconstruit un lien magnet complet depuis un flux Stremio « infoHash » :
+ * trackers de l'add-on (`sources: ["tracker:udp://…"]`) + trackers par défaut,
+ * et sélection de fichier BEP 53 (`so=`) pour les packs de saisons.
+ */
+export function buildMagnet(stream: { infoHash?: string; fileIdx?: number; sources?: string[]; name?: string; title?: string }): string | undefined {
+  const hash = stream.infoHash?.trim();
+  if (!hash || !/^([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})$/.test(hash)) return undefined;
+  const trackers = new Set<string>();
+  for (const src of stream.sources ?? []) {
+    const m = typeof src === 'string' ? src.match(/^tracker:(.+)$/) : null;
+    if (m && /^(udp|http|https|wss?):\/\//.test(m[1])) trackers.add(m[1]);
+  }
+  for (const t of DEFAULT_TRACKERS) trackers.add(t);
+  let magnet = `magnet:?xt=urn:btih:${hash.toLowerCase()}`;
+  const label = (stream.title ?? stream.name ?? '').split('\n')[0].slice(0, 120);
+  if (label) magnet += `&dn=${encodeURIComponent(label)}`;
+  for (const t of trackers) magnet += `&tr=${encodeURIComponent(t)}`;
+  if (Number.isInteger(stream.fileIdx) && (stream.fileIdx as number) >= 0) magnet += `&so=${stream.fileIdx}`;
+  return magnet;
 }
 
 /** Remplace le poster par l'image brute TMDB quand l'add-on l'expose (sans notes incrustées). */

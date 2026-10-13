@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { Readable } from 'node:stream';
-import { isSafePlayableUrl } from './addonClient.js';
+import { isSafePlayableUrl, isPublicHttpUrl } from './addonClient.js';
+import { isTunnelRequest } from './auth.js';
 
 /**
  * Convertit un fichier sous-titres au format SubRip (.srt) vers le format WebVTT (.vtt)
@@ -28,13 +29,60 @@ export function convertSrtToVtt(srtContent: string): string {
 }
 
 /**
+ * Effectue une requête HTTP en suivant les redirections manuellement et en validant
+ * chaque URL cible avec isPublicHttpUrl pour parer les contournements SSRF par 301/302.
+ */
+async function fetchWithSafeRedirects(
+  initialUrl: string,
+  init: RequestInit,
+  isTunnel: boolean,
+  maxRedirects = 5
+): Promise<globalThis.Response> {
+  let currentUrl = initialUrl;
+  let redirects = 0;
+
+  while (true) {
+    const res = await fetch(currentUrl, {
+      ...init,
+      redirect: 'manual',
+    });
+
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      redirects++;
+      if (redirects > maxRedirects) {
+        throw new Error('Trop de redirections HTTP (boucle détectée)');
+      }
+      const location = res.headers.get('location');
+      if (!location) return res;
+      const nextUrl = new URL(location, currentUrl).toString();
+      const isOk = isTunnel
+        ? isPublicHttpUrl(nextUrl, true)
+        : isPublicHttpUrl(nextUrl, false);
+      if (!isOk) {
+        throw new Error('Redirection interdite vers une cible locale ou non autorisée');
+      }
+      currentUrl = nextUrl;
+      continue;
+    }
+
+    return res;
+  }
+}
+
+/**
  * Proxy de sous-titres avec conversion SRT -> WebVTT et injection de headers CORS.
+ * Protégé contre le SSRF et les redirections vers des cibles locales/privées.
  */
 export async function proxySubtitle(req: Request, res: Response): Promise<void> {
   const targetUrl = req.query.url as string;
+  const isTunnel = isTunnelRequest(req.headers);
 
-  if (!targetUrl || !isSafePlayableUrl(targetUrl)) {
-    res.status(400).json({ success: false, error: 'URL de sous-titre invalide ou manquante' });
+  const urlOk = isTunnel
+    ? isPublicHttpUrl(targetUrl, true)
+    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:');
+
+  if (!targetUrl || !urlOk) {
+    res.status(400).json({ success: false, error: 'URL de sous-titre invalide ou interdite' });
     return;
   }
 
@@ -42,12 +90,16 @@ export async function proxySubtitle(req: Request, res: Response): Promise<void> 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const upstream = await fetch(targetUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    const upstream = await fetchWithSafeRedirects(
+      targetUrl,
+      {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
       },
-    });
+      isTunnel
+    );
 
     clearTimeout(timeout);
 
@@ -75,8 +127,14 @@ export async function proxySubtitle(req: Request, res: Response): Promise<void> 
  */
 export async function proxyStream(req: Request, res: Response): Promise<void> {
   const targetUrl = req.query.url as string;
+  const isTunnel = isTunnelRequest(req.headers);
 
-  if (!targetUrl || !isSafePlayableUrl(targetUrl) || targetUrl.startsWith('magnet:')) {
+  // Depuis un tunnel public, les cibles locales et privées sont refusées (anti-SSRF)
+  const urlOk = isTunnel
+    ? isPublicHttpUrl(targetUrl, true)
+    : isSafePlayableUrl(targetUrl) && !targetUrl.startsWith('magnet:');
+
+  if (!targetUrl || !urlOk) {
     res.status(400).json({ success: false, error: 'URL vidéo http(s) requise' });
     return;
   }
@@ -92,17 +150,19 @@ export async function proxyStream(req: Request, res: Response): Promise<void> {
   }
 
   const abortController = new AbortController();
-  req.on('close', () => {
-    abortController.abort();
-  });
+  // 'close' de la réponse = déconnexion du client (seek, fermeture du lecteur)
+  res.on('close', () => abortController.abort());
 
   try {
-    const upstreamRes = await fetch(targetUrl, {
-      method: req.method === 'HEAD' ? 'HEAD' : 'GET',
-      headers: upstreamHeaders,
-      signal: abortController.signal,
-      redirect: 'follow',
-    });
+    const upstreamRes = await fetchWithSafeRedirects(
+      targetUrl,
+      {
+        method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+        headers: upstreamHeaders,
+        signal: abortController.signal,
+      },
+      isTunnel
+    );
 
     // En-têtes CORS permissifs pour navigateur web
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -133,10 +193,10 @@ export async function proxyStream(req: Request, res: Response): Promise<void> {
       res.setHeader('accept-ranges', 'bytes');
     }
 
-    // Gestion du téléchargement forcé avec nom de fichier sain
+    // Gestion du téléchargement forcé avec nom de fichier sain (suppression CRLF comprise)
     if (req.query.download === '1' || req.query.dl === '1') {
       const rawFilename = (req.query.filename as string) || 'video.mp4';
-      const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'video.mp4';
+      const safeFilename = rawFilename.replace(/[\r\n/\\?%*:|"<>]/g, '_').trim() || 'video.mp4';
       res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
     }
 

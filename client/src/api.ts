@@ -12,6 +12,15 @@ async function fetch(input: string, init: RequestInit = {}): Promise<Response> {
   return res;
 }
 
+/**
+ * Ajoute la clé d'accès (?k=) aux URL consommées directement par <video>/<track>,
+ * qui ne peuvent pas envoyer d'en-tête personnalisé. Sans clé configurée, l'URL est inchangée.
+ */
+function withAccessKey(url: string): string {
+  const key = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY_STORAGE) : null;
+  return key ? `${url}${url.includes('?') ? '&' : '?'}k=${encodeURIComponent(key)}` : url;
+}
+
 export const accessKey = {
   set: (key: string) => localStorage.setItem(KEY_STORAGE, key),
   check: async (): Promise<{ required: boolean; ok: boolean }> => {
@@ -197,6 +206,8 @@ export interface StreamSource {
   description?: string;
   url?: string;
   infoHash?: string;
+  fileIdx?: number;
+  sources?: string[];
   behaviorHints?: any;
 }
 
@@ -491,18 +502,27 @@ export const api = {
         url += `&filename=${encodeURIComponent(options.filename)}`;
       }
     }
-    return url;
+    return withAccessKey(url);
   },
   getTorrentStreamUrl: (magnetOrHash: string, fileIndex?: number): string => {
     let url = `${API_BASE}/torrent/stream?magnet=${encodeURIComponent(magnetOrHash)}`;
     if (fileIndex !== undefined) {
       url += `&fileIndex=${fileIndex}`;
     }
-    return url;
+    return withAccessKey(url);
   },
   getTorrentStats: async (magnetOrHash: string): Promise<any> => {
     try {
-      const res = await fetch(`${API_BASE}/torrent/stats?magnet=${encodeURIComponent(magnetOrHash)}`);
+      let target = magnetOrHash;
+      if (target.includes('/api/torrent/stream')) {
+        try {
+          const u = new URL(target, 'http://localhost');
+          target = u.searchParams.get('magnet') || target;
+        } catch {
+          // ignore
+        }
+      }
+      const res = await fetch(`${API_BASE}/torrent/stats?magnet=${encodeURIComponent(target)}`);
       if (!res.ok) return null;
       const data = await res.json();
       return data.success ? data : null;
@@ -532,6 +552,18 @@ export const api = {
       return { available: false };
     }
   },
+  /** Durée (secondes) du média via ffprobe côté serveur ; null si inconnue. */
+  probeDuration: async (rawUrl: string): Promise<number | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/transcode/probe?url=${encodeURIComponent(rawUrl)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const d = Number(data?.probe?.duration);
+      return Number.isFinite(d) && d > 0 ? d : null;
+    } catch {
+      return null;
+    }
+  },
   getTranscodedStreamUrl: (rawUrl: string, options?: { startTime?: number; mode?: 'audio' | 'full' }): string => {
     let url = `${API_BASE}/transcode/stream?url=${encodeURIComponent(rawUrl)}`;
     if (options?.startTime && options.startTime > 0) {
@@ -540,12 +572,12 @@ export const api = {
     if (options?.mode) {
       url += `&mode=${options.mode}`;
     }
-    return url;
+    return withAccessKey(url);
   },
   getProxiedSubtitleUrl: (originalUrl: string): string => {
     if (!originalUrl) return originalUrl;
     if (originalUrl.startsWith('blob:') || originalUrl.startsWith('data:')) return originalUrl;
-    return `${API_BASE}/proxy/subtitle?url=${encodeURIComponent(originalUrl)}`;
+    return withAccessKey(`${API_BASE}/proxy/subtitle?url=${encodeURIComponent(originalUrl)}`);
   },
   getSkipTimes: async (
     id: string,

@@ -3,17 +3,18 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Request, Response } from 'express';
+import { DEFAULT_TRACKERS } from './addonClient.js';
 
 export interface TorrentStats {
   infoHash: string;
   name: string;
   ready: boolean;
   numPeers: number;
-  downloadSpeed: number; // bytes/sec
-  uploadSpeed: number; // bytes/sec
-  progress: number; // 0 to 1
-  downloaded: number; // bytes
-  total: number; // bytes
+  downloadSpeed: number; // octets/s
+  uploadSpeed: number; // octets/s
+  progress: number; // 0 à 1
+  downloaded: number; // octets
+  total: number; // octets
   files: Array<{
     index: number;
     name: string;
@@ -22,23 +23,19 @@ export interface TorrentStats {
   }>;
 }
 
-const VIDEO_EXTENSIONS = new Set([
-  '.mp4',
-  '.mkv',
-  '.webm',
-  '.avi',
-  '.mov',
-  '.m4v',
-  '.ts',
-  '.flv',
-]);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.ts', '.flv']);
 
-function getMimeType(filename: string): string {
-  const ext = path.extname(filename).toLowerCase();
-  switch (ext) {
-    case '.mp4':
-    case '.m4v':
-      return 'video/mp4';
+/** Nombre maximal de torrents actifs : le plus ancien est arrêté au-delà. */
+const MAX_ACTIVE_TORRENTS = 4;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const METADATA_TIMEOUT_MS = 25000;
+
+export function isVideoFileName(name: string): boolean {
+  return VIDEO_EXTENSIONS.has(path.extname(name).toLowerCase());
+}
+
+export function getMimeType(filename: string): string {
+  switch (path.extname(filename).toLowerCase()) {
     case '.webm':
       return 'video/webm';
     case '.mkv':
@@ -54,159 +51,191 @@ function getMimeType(filename: string): string {
   }
 }
 
+/** Extrait l'infoHash (40 hex ou 32 base32) d'un magnet ou d'un hash brut. */
 export function extractInfoHash(magnetOrHash: string): string | null {
   if (!magnetOrHash) return null;
   const trimmed = magnetOrHash.trim();
-  if (/^[a-fA-F0-9]{40}$/.test(trimmed)) {
-    return trimmed.toLowerCase();
-  }
-  const match = trimmed.match(/xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})/i);
+  if (/^[a-fA-F0-9]{40}$/.test(trimmed)) return trimmed.toLowerCase();
+  const match = trimmed.match(/xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})(?![a-zA-Z0-9])/i);
   return match ? match[1].toLowerCase() : null;
+}
+
+/** Sélection de fichier BEP 53 (`so=3`) d'un magnet : premier index valide, sinon undefined. */
+export function extractFileSelection(magnet: string): number | undefined {
+  const match = magnet.match(/[?&]so=(\d+)/);
+  if (!match) return undefined;
+  const index = parseInt(match[1], 10);
+  return Number.isSafeInteger(index) ? index : undefined;
+}
+
+/** Normalise une entrée (hash ou magnet) en magnet complet avec trackers par défaut. */
+export function toMagnetUri(magnetOrHash: string): string | null {
+  const hash = extractInfoHash(magnetOrHash);
+  if (!hash) return null;
+  const trimmed = magnetOrHash.trim();
+  if (trimmed.startsWith('magnet:')) return trimmed;
+  return `magnet:?xt=urn:btih:${hash}` + DEFAULT_TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join('');
+}
+
+export type ByteRange = { start: number; end: number };
+
+/**
+ * Analyse un en-tête HTTP Range (une seule plage) pour un fichier de `size` octets.
+ * - `null` : pas de Range exploitable → réponse complète (200)
+ * - `'unsatisfiable'` : plage hors fichier → 416
+ * - `{start,end}` : plage valide, `end` borné à la taille du fichier
+ */
+export function parseRange(header: string | undefined, size: number): ByteRange | 'unsatisfiable' | null {
+  if (!header) return null;
+  const match = header.match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || (match[1] === '' && match[2] === '')) return null;
+  if (size <= 0) return 'unsatisfiable';
+
+  let start: number;
+  let end: number;
+  if (match[1] === '') {
+    // Plage « suffixe » : les N derniers octets
+    const suffix = parseInt(match[2], 10);
+    if (suffix === 0) return 'unsatisfiable';
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = parseInt(match[1], 10);
+    end = match[2] === '' ? size - 1 : Math.min(parseInt(match[2], 10), size - 1);
+  }
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || start > end) {
+    return 'unsatisfiable';
+  }
+  return { start, end };
 }
 
 export class TorrentEngine {
   private client: any = null;
   private cacheDir: string;
-  private lastActivity: Map<string, number> = new Map();
+  private lastActivity = new Map<string, number>();
+  private pending = new Map<string, Promise<Torrent>>();
   private cleanupTimer: NodeJS.Timeout | null = null;
 
-  constructor() {
+  private clientOptions: Record<string, unknown>;
+
+  /** `clientOptions` permet d'isoler le réseau (ex. tests locaux sans DHT). */
+  constructor(clientOptions: Record<string, unknown> = {}) {
+    this.clientOptions = { maxConns: 65, tracker: true, dht: true, ...clientOptions };
     this.cacheDir = path.join(os.tmpdir(), 'stremo_torrents');
-    if (!fs.existsSync(this.cacheDir)) {
-      try {
-        fs.mkdirSync(this.cacheDir, { recursive: true });
-      } catch (err) {
-        console.warn('Erreur création dossier cache torrent:', err);
-      }
+    try {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
+    } catch (err) {
+      console.warn('Erreur création dossier cache torrent:', err);
     }
   }
 
+  /** Client WebTorrent créé à la première utilisation (aucun socket tant qu'on ne lit pas de torrent). */
   private getClient(): any {
     if (!this.client) {
-      this.client = new WebTorrent({
-        maxConns: 65,
-        tracker: true,
-        dht: true,
-      });
-
-      this.cleanupTimer = setInterval(() => {
-        this.cleanupInactiveTorrents();
-      }, 15 * 60 * 1000);
+      this.client = new WebTorrent(this.clientOptions);
+      this.client.on('error', (err: Error) => console.warn('[WebTorrent]', err.message));
+      this.cleanupTimer = setInterval(() => this.cleanupInactiveTorrents(), 15 * 60 * 1000);
       this.cleanupTimer.unref();
     }
     return this.client;
   }
 
+  private findTorrent(infoHash: string): Torrent | undefined {
+    if (!this.client) return undefined;
+    return (this.client.torrents as Torrent[]).find((t) => t.infoHash.toLowerCase() === infoHash);
+  }
+
+  private touch(infoHash: string): void {
+    this.lastActivity.set(infoHash, Date.now());
+  }
+
+  /** Arrête les torrents les plus anciens pour rester sous MAX_ACTIVE_TORRENTS. */
+  private makeRoom(): void {
+    const torrents = [...(this.client.torrents as Torrent[])];
+    if (torrents.length < MAX_ACTIVE_TORRENTS) return;
+    torrents.sort((a, b) => (this.lastActivity.get(a.infoHash) ?? 0) - (this.lastActivity.get(b.infoHash) ?? 0));
+    for (const old of torrents.slice(0, torrents.length - MAX_ACTIVE_TORRENTS + 1)) {
+      this.lastActivity.delete(old.infoHash);
+      old.destroy({ destroyStore: true });
+    }
+  }
+
   /**
-   * Récupère ou ajoute un torrent de manière asynchrone
+   * Récupère (ou ajoute) un torrent et attend ses métadonnées.
+   * Les appels simultanés pour un même hash (le navigateur envoie plusieurs Range) partagent la même promesse.
    */
-  public async getOrAddTorrent(magnetOrHash: string, timeoutMs = 25000): Promise<Torrent> {
-    const client = this.getClient();
+  public getOrAddTorrent(magnetOrHash: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<Torrent> {
     const infoHash = extractInfoHash(magnetOrHash);
-    if (infoHash) {
-      const existing = (client.torrents as Torrent[]).find(
-        (t: Torrent) => t.infoHash.toLowerCase() === infoHash
+    const magnetUri = toMagnetUri(magnetOrHash);
+    if (!infoHash || !magnetUri) return Promise.reject(new Error('Lien magnet ou infoHash invalide'));
+
+    const client = this.getClient();
+    this.touch(infoHash);
+
+    const existing = this.findTorrent(infoHash);
+    if (existing && existing.ready) return Promise.resolve(existing);
+    const inFlight = this.pending.get(infoHash);
+    if (inFlight) return inFlight;
+
+    const promise = new Promise<Torrent>((resolve, reject) => {
+      let settled = false;
+      const torrent: Torrent = existing ?? (() => {
+        this.makeRoom();
+        return client.add(magnetUri, { path: this.cacheDir, destroyStoreOnDestroy: true });
+      })();
+
+      const finish = (err: Error | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.pending.delete(infoHash);
+        if (err) {
+          try {
+            torrent.destroy({ destroyStore: true });
+          } catch {
+            // déjà détruit
+          }
+          reject(err);
+        } else {
+          resolve(torrent);
+        }
+      };
+
+      const timer = setTimeout(
+        () => finish(new Error("Délai d'attente des métadonnées du torrent dépassé (aucun pair trouvé)")),
+        timeoutMs
       );
-      if (existing) {
-        this.lastActivity.set(infoHash, Date.now());
-        if (existing.ready || (existing.files && existing.files.length > 0)) {
-          return existing;
-        }
-      }
-    }
-
-    return new Promise((resolve, reject) => {
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          reject(new Error("Délai d'attente des métadonnées du torrent dépassé (aucun pair trouvé)"));
-        }
-      }, timeoutMs);
-
-      try {
-        const torrent = client.add(
-          magnetOrHash,
-          {
-            path: this.cacheDir,
-            destroyStoreOnDestroy: true,
-          },
-          (t: Torrent) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              this.lastActivity.set(t.infoHash.toLowerCase(), Date.now());
-              resolve(t);
-            }
-          }
-        );
-
-        torrent.on('metadata', () => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            this.lastActivity.set(torrent.infoHash.toLowerCase(), Date.now());
-            resolve(torrent);
-          }
-        });
-
-        torrent.on('error', (err: any) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            reject(err);
-          }
-        });
-      } catch (err) {
-        clearTimeout(timeout);
-        reject(err);
-      }
+      torrent.once('ready', () => finish(null));
+      torrent.once('error', (err: any) => finish(err instanceof Error ? err : new Error(String(err))));
+      torrent.once('close', () => finish(new Error('Torrent fermé avant la fin du chargement')));
+      if (torrent.ready) finish(null);
     });
+
+    this.pending.set(infoHash, promise);
+    // Évite un « unhandled rejection » si plus personne n'attend la promesse partagée
+    promise.catch(() => undefined);
+    return promise;
   }
 
-  /**
-   * Trouve le fichier vidéo optimal dans le torrent
-   */
+  /** Fichier vidéo à lire : index demandé s'il est valide, sinon le plus gros fichier vidéo. */
   public selectBestVideoFile(torrent: Torrent, fileIndex?: number): TorrentFile | null {
-    if (!torrent.files || torrent.files.length === 0) return null;
-
-    if (fileIndex !== undefined && fileIndex >= 0 && fileIndex < torrent.files.length) {
-      return torrent.files[fileIndex];
+    const files = torrent.files ?? [];
+    if (files.length === 0) return null;
+    if (fileIndex !== undefined && Number.isInteger(fileIndex) && fileIndex >= 0 && fileIndex < files.length) {
+      return files[fileIndex];
     }
-
-    // Filtrer par extensions vidéo
-    const videoFiles = torrent.files.filter((f: TorrentFile) => {
-      const ext = path.extname(f.name).toLowerCase();
-      return VIDEO_EXTENSIONS.has(ext);
-    });
-
-    if (videoFiles.length > 0) {
-      // Choisir le plus volumineux
-      return videoFiles.reduce((prev: TorrentFile, current: TorrentFile) =>
-        prev.length > current.length ? prev : current
-      );
-    }
-
-    // Fallback : fichier le plus gros de tout le torrent
-    return torrent.files.reduce((prev: TorrentFile, current: TorrentFile) =>
-      prev.length > current.length ? prev : current
-    );
+    const biggest = (list: TorrentFile[]) => list.reduce((a, b) => (a.length >= b.length ? a : b));
+    const videos = files.filter((f) => isVideoFileName(f.name));
+    return biggest(videos.length > 0 ? videos : files);
   }
 
-  /**
-   * Retourne les statistiques en temps réel d'un torrent
-   */
+  /** Statistiques en temps réel (null si le torrent n'est pas (encore) chargé). */
   public getStats(magnetOrHash: string): TorrentStats | null {
-    if (!this.client) return null;
     const infoHash = extractInfoHash(magnetOrHash);
     if (!infoHash) return null;
-
-    const torrent = (this.client.torrents as Torrent[]).find(
-      (t: Torrent) => t.infoHash.toLowerCase() === infoHash
-    );
+    const torrent = this.findTorrent(infoHash);
     if (!torrent) return null;
-
-    this.lastActivity.set(infoHash, Date.now());
+    this.touch(infoHash);
 
     return {
       infoHash: torrent.infoHash,
@@ -218,137 +247,118 @@ export class TorrentEngine {
       progress: torrent.progress,
       downloaded: torrent.downloaded,
       total: torrent.length,
-      files: (torrent.files || []).map((f: TorrentFile, idx: number) => ({
-        index: idx,
+      files: (torrent.files ?? []).map((f: TorrentFile, index: number) => ({
+        index,
         name: f.name,
         length: f.length,
-        isVideo: VIDEO_EXTENSIONS.has(path.extname(f.name).toLowerCase()),
+        isVideo: isVideoFileName(f.name),
       })),
     };
   }
 
-  /**
-   * Diffuse le flux vidéo d'un torrent en streaming HTTP avec support HTTP 206 Range
-   */
+  /** Diffuse un fichier du torrent en HTTP (200 / 206 / 416, HEAD inclus). */
   public async handleStream(req: Request, res: Response): Promise<void> {
-    const magnet = (req.query.magnet as string) || (req.query.infoHash as string);
-    if (!magnet) {
-      res.status(400).json({ error: 'Paramètre magnet ou infoHash requis' });
+    const magnet = String(req.query.magnet ?? req.query.infoHash ?? '');
+    if (!extractInfoHash(magnet)) {
+      res.status(400).json({ success: false, error: 'Paramètre magnet ou infoHash valide requis' });
       return;
     }
 
-    const fileIndexQuery = req.query.fileIndex as string | undefined;
-    const fileIndex = fileIndexQuery !== undefined ? parseInt(fileIndexQuery, 10) : undefined;
+    let fileIndex = extractFileSelection(magnet);
+    if (req.query.fileIndex !== undefined) {
+      const parsed = Number(req.query.fileIndex);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        res.status(400).json({ success: false, error: 'fileIndex invalide' });
+        return;
+      }
+      fileIndex = parsed;
+    }
 
     try {
       const torrent = await this.getOrAddTorrent(magnet);
       const file = this.selectBestVideoFile(torrent, fileIndex);
-
       if (!file) {
-        res.status(404).json({ error: 'Aucun fichier vidéo trouvé dans ce torrent' });
+        res.status(404).json({ success: false, error: 'Aucun fichier vidéo trouvé dans ce torrent' });
+        return;
+      }
+      if (res.destroyed) return;
+
+      // Téléchargement prioritaire du fichier lu uniquement
+      torrent.files.forEach((f: TorrentFile) => (f === file ? f.select() : f.deselect()));
+      this.touch(torrent.infoHash.toLowerCase());
+
+      const size = file.length;
+      const range = parseRange(req.headers.range, size);
+
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', getMimeType(file.name));
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+      res.setHeader('Cache-Control', 'no-cache');
+
+      if (range === 'unsatisfiable') {
+        res.status(416).setHeader('Content-Range', `bytes */${size}`);
+        res.end();
         return;
       }
 
-      // Prioriser le fichier vidéo sélectionné pour le téléchargement séquentiel
-      torrent.files.forEach((f: TorrentFile) => {
-        if (f !== file) {
-          f.deselect();
-        }
-      });
-      file.select();
+      const start = range ? range.start : 0;
+      const end = range ? range.end : size - 1;
+      res.status(range ? 206 : 200);
+      if (range) res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      res.setHeader('Content-Length', end - start + 1);
 
-      const infoHash = torrent.infoHash.toLowerCase();
-      this.lastActivity.set(infoHash, Date.now());
-
-      const mimeType = getMimeType(file.name);
-      const totalSize = file.length;
-      const range = req.headers.range;
-
-      res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cache-Control', 'no-cache');
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
-
-        if (start >= totalSize || end >= totalSize) {
-          res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
-          return;
-        }
-
-        const chunkSize = end - start + 1;
-        res.status(206);
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
-        res.setHeader('Content-Length', chunkSize);
-
-        const stream = file.createReadStream({ start, end });
-        stream.pipe(res);
-
-        req.on('close', () => {
-          stream.destroy();
-        });
-      } else {
-        res.status(200);
-        res.setHeader('Content-Length', totalSize);
-
-        const stream = file.createReadStream();
-        stream.pipe(res);
-
-        req.on('close', () => {
-          stream.destroy();
-        });
+      if (req.method === 'HEAD' || size === 0) {
+        res.end();
+        return;
       }
+
+      const stream = file.createReadStream({ start, end });
+      stream.on('error', () => res.destroy());
+      // 'close' sur la réponse : déclenché par une déconnexion client (seek, fermeture du lecteur)
+      res.on('close', () => stream.destroy());
+      stream.pipe(res);
     } catch (err: any) {
-      console.error('Erreur lecture torrent:', err);
+      console.error('Erreur lecture torrent:', err?.message ?? err);
       if (!res.headersSent) {
-        res.status(504).json({
-          error: err.message || 'Impossible de démarrer la lecture du torrent',
-        });
+        res.status(504).json({ success: false, error: err?.message || 'Impossible de démarrer la lecture du torrent' });
+      } else {
+        res.destroy();
       }
     }
   }
 
-  /**
-   * Nettoie les torrents inactifs depuis plus de 30 minutes
-   */
+  /** Arrête les torrents inactifs depuis plus de 30 minutes. */
   private cleanupInactiveTorrents(): void {
     if (!this.client) return;
     const now = Date.now();
-    const maxIdleMs = 30 * 60 * 1000;
-
-    for (const torrent of (this.client.torrents as Torrent[])) {
+    for (const torrent of [...(this.client.torrents as Torrent[])]) {
       const hash = torrent.infoHash.toLowerCase();
-      const last = this.lastActivity.get(hash) || 0;
-      if (now - last > maxIdleMs) {
+      if (now - (this.lastActivity.get(hash) ?? 0) > IDLE_TIMEOUT_MS) {
         try {
           torrent.destroy({ destroyStore: true });
-          this.lastActivity.delete(hash);
         } catch (e) {
           console.warn('Erreur suppression torrent inactif:', e);
         }
+        this.lastActivity.delete(hash);
       }
     }
   }
 
-  /**
-   * Arrêt propre de l'instance
-   */
+  /** Arrêt propre de l'instance. */
   public destroy(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+    const client = this.client;
+    this.client = null;
+    this.pending.clear();
     return new Promise((resolve) => {
+      if (!client) return resolve();
       try {
-        if (this.client) {
-          this.client.destroy(() => resolve());
-        } else {
-          resolve();
-        }
-      } catch (e) {
+        client.destroy(() => resolve());
+      } catch {
         resolve();
       }
     });

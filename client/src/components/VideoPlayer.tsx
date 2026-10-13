@@ -46,6 +46,7 @@ import {
   detectStreamAudioLanguage,
   matchSmartSubtitle,
 } from '../streams';
+import { installTranscodeClock, type TranscodeClock } from '../transcodeClock';
 
 export interface NextEpisodeInfo {
   id: string;
@@ -415,6 +416,32 @@ export const VideoPlayer: React.FC<Props> = ({
   const [selectedTorrentFileIndex, setSelectedTorrentFileIndex] = useState<number | null>(null);
   const [showTorrentFilesMenu, setShowTorrentFilesMenu] = useState<boolean>(false);
   const triedTranscodeRef = useRef(false);
+  const transcodeClockRef = useRef<TranscodeClock | null>(null);
+
+  const startTranscode = (video: HTMLVideoElement, startTime: number) => {
+    triedTranscodeRef.current = true;
+    if (transcodeClockRef.current) {
+      transcodeClockRef.current.setOffset(startTime);
+    } else {
+      transcodeClockRef.current = installTranscodeClock(
+        video,
+        { offset: startTime, duration: duration > 0 ? duration : 0 },
+        (absTime) => {
+          startTranscode(video, absTime);
+        }
+      );
+      api.probeDuration(streamUrl).then((dur) => {
+        if (dur && dur > 0) {
+          setDuration(dur);
+          transcodeClockRef.current?.setDuration(dur);
+        }
+      }).catch(() => {});
+    }
+    const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime, mode: 'audio' });
+    video.src = transcodeUrl;
+    video.load();
+    video.play().catch(() => {});
+  };
 
   useEffect(() => {
     if (!streamUrl || (!streamUrl.startsWith('magnet:') && !streamUrl.includes('/api/torrent/stream'))) {
@@ -468,11 +495,8 @@ export const VideoPlayer: React.FC<Props> = ({
     const video = videoRef.current;
     if (!video) return;
     const curTime = Math.round(video.currentTime || initialTime || 0);
-    const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime: curTime, mode: 'audio' });
     setSkipToast("Transcodage audio AAC en cours... ⚡");
-    video.src = transcodeUrl;
-    video.load();
-    video.play().catch(() => {});
+    startTranscode(video, curTime);
   };
 
   const handleDeleteBookmark = async (id: string, e?: React.MouseEvent) => {
@@ -628,6 +652,10 @@ export const VideoPlayer: React.FC<Props> = ({
     if (!video) return;
 
     let hls: Hls | null = null;
+    triedTranscodeRef.current = false;
+    setSelectedTorrentFileIndex(null);
+    transcodeClockRef.current?.dispose();
+    transcodeClockRef.current = null;
     setPlaybackError(null);
     setFallbackStream(null);
     setFallbackCountdown(null);
@@ -684,13 +712,8 @@ export const VideoPlayer: React.FC<Props> = ({
 
         // 2. Si le format ou le codec audio est incompatible, bascule automatique sur le remuxer AAC universel
         if (!triedTranscodeRef.current && !streamUrl.includes('/api/transcode/stream')) {
-          triedTranscodeRef.current = true;
-          const cur = Math.round(video.currentTime || initialTime || 0);
-          const transcodeUrl = api.getTranscodedStreamUrl(streamUrl, { startTime: cur, mode: 'audio' });
           setSkipToast("Bascule automatique : remuxing audio AAC en direct ⚡");
-          video.src = transcodeUrl;
-          video.load();
-          video.play().catch(() => {});
+          startTranscode(video, Math.round(video.currentTime || initialTime || 0));
           return;
         }
 
@@ -700,15 +723,20 @@ export const VideoPlayer: React.FC<Props> = ({
 
     return () => {
       if (hls) hls.destroy();
+      transcodeClockRef.current?.dispose();
+      transcodeClockRef.current = null;
     };
   }, [streamUrl, initialTime]);
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const curr = videoRef.current.currentTime;
-    const dur = videoRef.current.duration || 0;
+    const rawDur = videoRef.current.duration;
+    const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : (duration > 0 ? duration : 0);
     setCurrentTime(curr);
-    setDuration(dur);
+    if (dur > 0 && dur !== duration) {
+      setDuration(dur);
+    }
     if (onProgress && Math.floor(curr) % 5 === 0) {
       onProgress(curr, dur);
     }
