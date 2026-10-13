@@ -61,21 +61,35 @@ La plupart des applications de streaming communautaires existantes souffrent de 
   - Diffusion en un clic sur TV de salon, Chromecast et récepteurs AirPlay via les API standard W3C Remote Playback et Apple WebKit.
 - **Téléchargement Hors-Ligne Direct** :
   - Bouton de téléchargement 1-clic sur chaque flux direct HTTP / Debrid pour emporter ses films et séries hors connexion.
-- **Saut du Générique de Fin (Outro / Credits Skip)** :
+- **Saut d'Intro Intelligent & Adaptatif** :
+  - **Priorité 1 (AniSkip / Chapitres communautaires)** : saut exact à la seconde près avec timecode affiché (`01:05 → 02:35`).
+  - **Priorité 2 (Standard Animes Japonais)** : détection automatique du format anime avec durée standard absolue des télévisions japonaises (TV Tokyo / MBS) fixée à **90 secondes** (1 min 30 s), libellé dynamique « Passer l'opening (+90s) ».
+  - **Priorité 3 (Formats Courts / Sitcoms)** : durée de **25 secondes** pour les épisodes de 20-25 minutes.
+  - **Priorité 4 (Séries dramatiques standard)** : durée de **80 secondes** par défaut (ajustable dans les paramètres).
+  - **Priorité 5 (Films)** : aucun saut d'intro aveugle arbitraire proposé afin de préserver l'intégrité de la scène d'ouverture.
+  - Option de saut automatique transparent avec notification toast.
+- **Saut du Générique de Fin (Outro / Credits Skip & Binge-Watching)** :
   - Détection automatique dès l'entrée dans le générique de fin (seuil configurable : 90s, 75s, 45s, 20s avant la fin).
   - Bandeau élégant « Générique de fin détecté • Épisode suivant » avec compte à rebours 10s et bouton de saut immédiat (`Touche N`).
   - Bouton pour rester sur le générique si l'utilisateur souhaite regarder une scène post-crédits.
-- **Saut du Générique de Début (Passer l'intro)** :
-  - Bouton d'action rapide flottant dans les 4 premières minutes de l'épisode pour avancer de 85 secondes (`Touche S`).
-- **Menu Réglages « Génériques »** : réglage en temps réel du seuil d'outro et de l'enchaînement automatique sauvegardé dans le profil.
-- **Gestion des Sous-titres & Décalage (Sync)** :
-  - Sélection des pistes OpenSubtitles v3.
-  - Décalage à la volée (`+/-0.5s`, `+/-1.0s`, reset `0s`).
-  - Tailles de police au choix (`Normal`, `Grand`, `Maxi`) avec surbrillance noire contrastée.
+- **Gestion des Sous-titres & Esthétique Cinématique** :
+  - **Normalisation multilingue ISO 639-1 / 639-2** : drapeaux emoji lisibles (🇫🇷, 🇬🇧, 🇪🇸, 🇯🇵, etc.), libellés complets en français, détection automatique des variantes `Forcé`, `SDH / CC` et import local.
+  - **Regroupement et filtrage par langue** : onglets par langue (« Tous », « 🇫🇷 Français (12) », etc.) et barre de recherche textuelle rapide.
+  - **Rendu cinématique haute fidélité** : typographie moderne anti-crénelée, ombres portées nettes et anti-reflet garantissant une lisibilité parfaite sur fond clair comme sombre.
+  - **Palette de couleurs** : Blanc classique, Jaune Cinéma 🎬 (`#facc15`), Cyan moderne (`#67e8f9`).
+  - **Arrière-plans modulables** : Ombre seule pure cinéma, Translucide doux (`rgba(10, 14, 23, 0.65)`), Boîte opaque (`rgba(0, 0, 0, 0.9)`).
+  - **Tailles de texte progressives** : Fin (0.95rem), Standard (1.2rem), Grand (1.5rem), Maxi (1.9rem).
+  - **Synchronisation temporelle à la volée** : réglage fin (`-0.5s`, `0s (Reset)`, `+0.5s`) avec persistance des préférences.
+- **Panneau de Réglages Global de l'Application (`SettingsModal`)** :
+  - Choix de la langue audio principale préférée et de la langue des sous-titres par défaut.
+  - Règle intelligente d'activation automatique : `Intelligent (VOSTFR)` (activé si l'audio diffère de la langue préférée, masqué en VF), `Toujours`, `Désactivé`.
+  - Cadre de prévisualisation en direct de l'apparence des sous-titres.
+  - Configuration du saut d'intro, du seuil de binge-watching et du lecteur par défaut.
+  - Persistance double transparente dans le profil SQLite distant et le stockage local immédiat.
 - **Contrôles et Fonctionnalités Avancées** :
-  - Vitesse de lecture (0.75x à 2.0x).
+  - Vitesse de lecture (0.5x à 2.0x).
   - Mode Picture-in-Picture (PiP) natif.
-  - Raccourcis clavier universels (Espace/K, F, M, N, S, Flèches).
+  - Raccourcis clavier universels (Espace/K, F, M, N, S, T, D, Flèches).
   - Lancement direct dans les lecteurs externes desktop : **VLC**, **MPV**, lecteur système (`xdg-open`).
   - Support des Intents Android : **Just Player**, **Nova Video Player**, **MX Player**.
 
@@ -220,6 +234,75 @@ Ce plan est conçu pour présenter le projet à des proches, des utilisateurs fi
 | **4. Fiche Média & Filtres Debrid (2 min)** | Ouvrir un film. Montrer l'analyse des flux, le filtre `⚡ Debrid`, et cliquer sur un acteur pour ouvrir sa filmographie. | Démontrer la valeur ajoutée pour les cinéphiles et utilisateurs de Real-Debrid. |
 | **5. Le Lecteur & Saut de Générique (2 min)** | Lancer une série. Cliquer sur « Passer l'intro (+85s) ». Avancer vers la fin pour voir le bandeau d'épisode suivant apparaître dès le début du générique de fin. | **Moment fort ("Whaou")** : confort de binge-watching identique aux plateformes payantes. |
 | **6. Sécurité & Mode Enfant (2 min)** | Basculer sur le profil « Enfants » : constater la disparition de tout contenu violent. Tenter de revenir sur « Principal » : le code PIN bloque l'accès. | Rassurer les parents sur la protection familiale totale. |
+
+---
+
+## 📱 4. Architecture Multi-Plateformes & Système Multi-Comptes Distants
+
+En réponse à la vision long terme de Stremo, cette section détaille la stratégie technique pour le déploiement sur tous les écosystèmes et la synchronisation inter-comptes.
+
+### 🌐 A. Déclinaisons Multi-Plateformes
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          STREMO CORE APP                               │
+│       React 19 + TypeScript + Vite + Tailwind CSS + Web Audio/Video    │
+└──────────────┬──────────────────┬──────────────────┬───────────────────┘
+               │                  │                  │
+               ▼                  ▼                  ▼
+    ┌──────────────────────┐ ┌─────────┐ ┌──────────────────────┐
+    │  Android / Fire TV   │ │ Web App │ │    Linux Desktop     │
+    │  Capacitor / Leanback│ │   PWA   │ │   Tauri / Flatpak    │
+    │  ExoPlayer / Intents │ │ Offline │ │   Hardware Vaapi     │
+    └──────────────────────┘ └─────────┘ └──────────────────────┘
+```
+
+1. **Android Mobile & Tablette (APK / Capacitor)** :
+   - Conteneur WebView haute performance via **Capacitor** ou TWA (Trusted Web Activity).
+   - Prise en charge native des Intents vidéo Android pour diffuser vers **Just Player**, **VLC** ou le lecteur interne ExoPlayer.
+   - Gestion des gestes tactiles (glissement vertical pour luminosité et volume, double tap seek).
+
+2. **Android TV & Smart Box (Google TV / Fire TV)** :
+   - Détection automatique Leanback et activation automatique du `tv-mode-active` (tuiles agrandies, focus rings contrastés, bandeau télécommande).
+   - Support total du D-Pad télécommande (haut, bas, gauche, droite, Enter/Select, Back).
+   - Intégration du canal de recommandation de l'écran d'accueil Android TV (Next Up rows).
+
+3. **Web App (PWA Universelle)** :
+   - Installable en 1 clic sans passer par un magasin d'applications (`beforeinstallprompt`).
+   - Service Worker pour la mise en cache des assets statiques et fonctionnement fluide hors-ligne.
+   - Compatibilité totale navigateurs desktop et mobiles (Chrome, Firefox, Safari, Edge).
+
+4. **Linux Desktop (Tauri / AppImage / Flatpak)** :
+   - Application native ultra légère basée sur **Tauri** (backend Rust + WebView Linux `webkit2gtk`), produisant un binaire de moins de 15 Mo avec une consommation mémoire inférieure à 60 Mo de RAM.
+   - Décodage matériel GPU natif (VA-API / NVDEC).
+   - Fichier `.desktop` avec association de protocole URL `stremo://` et lancement direct dans MPV ou VLC sans latence.
+
+---
+
+### 👥 B. Système de Comptes Multi-Utilisateurs & Synchronisation Distante
+
+Pour permettre à plusieurs utilisateurs ou foyers de disposer de leurs propres environnements totalement indépendants et synchronisés en temps réel :
+
+1. **Structure de Données Distante (SQLite / PostgreSQL)** :
+   - **Table `users`** :
+     - `id`: UUID unique
+     - `email`: adresse email vérifiée
+     - `password_hash`: hachage fort moderne (Argon2id ou Scrypt avec salt)
+     - `sync_token`: clé cryptographique de synchronisation multi-appareils
+     - `role`: 'admin' | 'user'
+     - `created_at`: date de création
+   - **Table `profiles`** (liée à `user_id`) :
+     - Chaque compte utilisateur possède ses propres profils (ex: Papa, Maman, Enfant).
+     - Isolation stricte des favoris, historiques, signets et configurations d'add-ons par `user_id`.
+
+2. **Flux d'Authentification & Sécurité** :
+   - Authentification par jeton de session sécurisé (JWT en cookie HTTP-Only avec `SameSite=Lax` et flag `Secure`).
+   - Protection contre le brute-force : limitation de débit (rate limiting) sur les routes `/api/auth/login`.
+   - Changement et réinitialisation de mot de passe sécurisés.
+
+3. **Moteur de Synchronisation Temps Réel (Cloud Sync Hub)** :
+   - Synchronisation bidirectionnelle automatique (WebSocket ou SSE) : toute action effectuée sur un appareil (ex: film mis en pause à 42:15 sur smartphone) se reflète instantanément sur la TV du salon connectée au même compte.
+   - Résolution automatique des conflits basée sur l'horodatage le plus récent (CRDT / Last-Write-Wins avec timecode le plus avancé).
 
 ---
 

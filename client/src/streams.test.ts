@@ -290,3 +290,78 @@ test('Formatage des ratios d’aspect et filtres d’égaliseur vidéo', () => {
   assert.strictEqual(getFilter(100, 100, 100), 'brightness(100%) contrast(100%) saturate(100%)');
   assert.strictEqual(getFilter(90, 118, 95), 'brightness(90%) contrast(118%) saturate(95%)');
 });
+
+test('computeSmartIntroSkip et isAnimeContent calculent la durée réfléchie du générique', async () => {
+  const { computeSmartIntroSkip, isAnimeContent } = await import('./streams.ts');
+
+  // 1. Anime : détecté par mot clé ou audio japonais -> 90 secondes (standard japonais TV Tokyo)
+  assert.strictEqual(isAnimeContent({ title: 'Jujutsu Kaisen', genres: ['Animation'] }), true);
+  assert.strictEqual(isAnimeContent({ title: 'Breaking Bad', genres: ['Drama'] }), false);
+
+  const animeIntro = computeSmartIntroSkip({
+    currentTime: 60,
+    duration: 1440, // 24 min
+    mediaType: 'episode',
+    title: 'Demon Slayer',
+    genres: ['Animation'],
+    isSeries: true,
+  });
+  assert.strictEqual(animeIntro.canSkip, true);
+  assert.strictEqual(animeIntro.skipDurationSec, 90);
+  assert.strictEqual(animeIntro.targetTime, 150);
+  assert.strictEqual(animeIntro.reason, 'anime');
+  assert.ok(animeIntro.badgeText.includes('+90s'));
+
+  // 2. Sitcom / Série courte (< 30 minutes, ex 22 min = 1320s) -> 25 secondes
+  const shortIntro = computeSmartIntroSkip({
+    currentTime: 30,
+    duration: 1320,
+    mediaType: 'episode',
+    title: 'The Office',
+    isSeries: true,
+  });
+  assert.strictEqual(shortIntro.canSkip, true);
+  assert.strictEqual(shortIntro.skipDurationSec, 25);
+  assert.strictEqual(shortIntro.targetTime, 55);
+  assert.strictEqual(shortIntro.reason, 'short_episode');
+  assert.ok(shortIntro.badgeText.includes('+25s'));
+
+  // 3. Série standard 50 minutes (3000s) -> 80 secondes
+  const standardIntro = computeSmartIntroSkip({
+    currentTime: 120,
+    duration: 3000,
+    mediaType: 'episode',
+    title: 'Succession',
+    isSeries: true,
+  });
+  assert.strictEqual(standardIntro.canSkip, true);
+  assert.strictEqual(standardIntro.skipDurationSec, 80);
+  assert.strictEqual(standardIntro.targetTime, 200);
+  assert.strictEqual(standardIntro.reason, 'standard_episode');
+
+  // 4. Film -> pas de saut d'intro aveugle
+  const movieIntro = computeSmartIntroSkip({
+    currentTime: 60,
+    duration: 7200,
+    mediaType: 'movie',
+    title: 'Inception',
+    isSeries: false,
+  });
+  assert.strictEqual(movieIntro.canSkip, false);
+  assert.strictEqual(movieIntro.reason, 'movie_none');
+
+  // 5. Timecodes exacts AniSkip (priorité absolue)
+  const exactIntro = computeSmartIntroSkip({
+    currentTime: 70,
+    duration: 1440,
+    mediaType: 'episode',
+    title: 'Attack on Titan',
+    exactSkip: { intro: { start: 65, end: 155 } },
+  });
+  assert.strictEqual(exactIntro.canSkip, true);
+  assert.strictEqual(exactIntro.skipDurationSec, 85); // 155 - 70
+  assert.strictEqual(exactIntro.targetTime, 155);
+  assert.strictEqual(exactIntro.reason, 'exact');
+  assert.strictEqual(exactIntro.badgeText, '01:05 → 02:35');
+});
+

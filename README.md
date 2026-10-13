@@ -76,58 +76,72 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
     - **Analyse complète par profil** : calcul en temps réel du temps total passé à regarder des films et séries (heures/minutes), nombre de médias complétés, série la plus dévorée (Top Binge).
     - **Répartition des genres & Trophées** : jauges de progression par genre et badges cinéphiles débloqués (« Grand Spectateur », « Binge Watcher », « Cinéphile Assidu »).
 
-11. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
+11. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Sous-Titres Cinématiques** :
     - **Proxy de Streaming Anti-CORS & HTTP 206 Range** : contournement instantané des restrictions cross-origin des serveurs distants (Torbox, Real-Debrid) avec support des requêtes partielles HTTP 206 Range pour une lecture web ultra-fluide.
     - **Proxy de Sous-titres & Conversion WebVTT à la volée** : standardisation automatique de tous les sous-titres OpenSubtitles (.srt) en format WebVTT (.vtt) avec en-têtes CORS permissifs.
-    - **Préférences Linguistiques Intelligentes** : détection de la langue audio du flux (VF, MULTI, VO) et activation automatique de la bonne piste de sous-titres (ex: VOSTFR automatique si film étranger, sous-titres masqués si VF).
-    - **Chapitrage Exact AniSkip & Communautaire** : saut d'intro et d'outro calé sur les timecodes réels vérifiés par la communauté pour les animes et séries.
-    - **Auto-Fallback Transparent en Cas d'Erreur** : si un flux vidéo direct ou Debrid échoue (format non supporté, codec indisponible, lien 403), Stremo bascule automatiquement vers le prochain flux alternatif après un compte à rebours de 3 secondes avec option d'annulation ou basculement immédiat.
-    - **Sélecteur de Flux en Cours de Lecture** : bouton `Flux (N)` directement accessible dans la barre de contrôle pour permuter entre 4K, 1080p, ou différents providers Debrid sans jamais quitter ni relancer le lecteur vidéo !
-    - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio intégrée via Web Audio API (`DynamicsCompressorNode`) activable en 1 clic (ou touche `D`) pour apaiser les effets sonores assourdissants et magnifier la clarté des dialogues lors des séances nocturnes.
-    - **Saut Automatique & Manuel du Générique d'Intro** : saut automatique configurable (ex: +85s) dès le début de l'épisode pour les séries, avec bouton flottant manuel (`Touche S`) et possibilité d'annuler.
-    - **Saut du Générique de Fin & Binge-Watching** : détection dès le début de l'outro (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours 10s ou raccourci (`Touche N`).
+    - **Sous-Titres Cinématiques Haute Fidélité (`video::cue`)** :
+      - Typographie moderne anti-crénelée avec ombres portées nettes pour une lisibilité parfaite sur fond clair comme sombre.
+      - 3 couleurs cinématographiques : Blanc classique, **Jaune Cinéma 🎬** (`#facc15`), Cyan moderne (`#67e8f9`).
+      - 3 styles d'arrière-plan : Ombre seule cinéma, Translucide doux flouté, Boîte opaque.
+      - 4 tailles progressives : Fin, Standard, Grand, Maxi.
+      - Normalisation multilingue ISO 639 (drapeaux 🇫🇷 🇬🇧 🇪🇸 🇯🇵, libellés en français, détection automatique des tags `Forcé` et `SDH`).
+      - Menus par onglets dans le lecteur avec filtrage par langue et recherche textuelle rapide.
+    - **Saut d'Intro Intelligent & Adaptatif** :
+      - Durée calculée selon la nature de l'œuvre : **Animes** (durée standard TV Tokyo = 90s, libellé « Passer l'opening (+90s) »), **Sitcoms et formats courts <30 min** (25s), **Séries drama** (80s ou personnalisée), **Films** (pas de saut aveugle arbitraire), **AniSkip / Chapitres communautaires** (saut exact au millième de seconde près).
+      - Option de saut automatique transparent avec notification toast.
+    - **Préférences Linguistiques Intelligentes** : détection de la langue audio du flux (VF, MULTI, VO) et activation automatique selon le mode choisi (Intelligent VOSTFR, Toujours, Jamais).
+    - **Auto-Fallback Transparent en Cas d'Erreur** : si un flux vidéo direct ou Debrid échoue, Stremo bascule automatiquement vers le prochain flux alternatif après 3 secondes avec compte à rebours.
+    - **Sélecteur de Flux en Cours de Lecture** : bouton `Flux (N)` directement accessible pour permuter entre 4K, 1080p, ou différents providers Debrid sans interruption.
+    - **Mode Nuit & Boost Dialogues (Dynamic Audio Compressor)** : compression audio Web Audio API activable en 1 clic (ou touche `D`) pour adoucir les déflagrations et magnifier les voix.
+    - **Saut du Générique de Fin & Binge-Watching** : détection de l'outro (seuil configurable : 90s, 75s, 45s, 20s) pour lancer instantanément l'épisode suivant via compte à rebours 10s ou raccourci (`Touche N`).
     - **Google Cast & Apple AirPlay** : diffusion directe sur vos Smart TV, Chromecast et récepteurs AirPlay via les API standard Web et Remote Playback.
-    - **Téléchargement hors-ligne direct** : bouton 1-clic pour les flux Debrid et liens HTTP directs afin de visionner sans connexion.
-    - **Synchronisation fine des sous-titres** : réglage en direct du décalage (`+/-0.5s`, `+/-1.0s`, `0s Reset`) pour synchroniser n'importe quel fichier SRT/VTT OpenSubtitles.
-    - **Taille des sous-titres personnalisable** : `Normal`, `Grand`, `Maxi` avec surbrillance noire contrastée pour grand écran ou salon.
-    - **Vitesse de lecture adaptable** : `0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `2.0x` (raccourcis `[` et `]`) et mode **Picture-in-Picture (PiP)** natif.
-    - Lancement direct dans les lecteurs externes desktop (**VLC**, **MPV**, lecteur système) et Android (**Just Player**, **Nova Video Player**, **MX Player**).
+    - **Téléchargement hors-ligne direct** : bouton 1-clic pour les flux Debrid et liens HTTP directs.
+    - **Synchronisation fine des sous-titres** : réglage en direct du décalage (`+/-0.5s`, `0s Reset`).
+    - **Vitesse de lecture adaptable** : `0.5x` à `2.0x` (raccourcis `[` et `]`) et mode **Picture-in-Picture (PiP)** natif.
+    - Lancement direct dans les lecteurs externes desktop (**VLC**, **MPV**) et Android (**Just Player**, **Nova Video Player**).
 
 12. **Écosystème Multi-Écrans, Découverte Réseau Local & Télécommande Mobile Temps Réel** :
-    - **Découverte Réseau Local Zéro-Configuration (Zero-Conf LAN Discovery)** : détection automatique en direct des écrans Stremo connectés sur le même réseau Wi-Fi local (Salon TV, Mobile, Desktop) avec association en 1 clic sans devoir saisir de code PIN.
-    - **Appairage Express TV <50ms par Server-Sent Events (SSE)** : grand code PIN 6 caractères et QR code interactif avec basculement sub-50ms dès validation mobile.
-    - **Télécommande Mobile Tactile en Direct** : pavé tactile sur smartphone pour piloter la TV à distance en temps réel (Play/Pause, saut +/-10s, passer l'intro, épisode suivant, contrôle du volume et mute).
-    - **Canal de Synchronisation Continue du Foyer (Family Sync Hub)** : synchronisation bidirectionnelle automatique en arrière-plan pour synchroniser profils, favoris et progression sur tous les écrans du foyer sans manipulation manuelle.
+    - **Découverte Réseau Local Zéro-Configuration (Zero-Conf LAN Discovery)** : détection automatique en direct des écrans Stremo connectés sur le même réseau Wi-Fi local avec association en 1 clic.
+    - **Appairage Express TV <50ms par Server-Sent Events (SSE)** : code PIN 6 caractères et QR code interactif.
+    - **Télécommande Mobile Tactile en Direct** : pavé tactile smartphone pour piloter la TV à distance en temps réel.
+    - **Canal de Synchronisation Continue du Foyer (Family Sync Hub)** : synchronisation bidirectionnelle automatique en tâche de fond.
 
 13. **Mode Salon TV 10-pieds Dédié** :
     - Détection automatique sur Smart TV et boîtiers Android TV, Fire TV, Chromecast, WebOS, Tizen.
     - Raccourci clavier / télécommande `T` ou bouton « Mode TV » dans l'en-tête pour basculer à volonté.
-    - Typographie agrandie haute lisibilité, anneaux de focus lumineux amplifiés (`scale-105`), barre d'assistance télécommande au bas de l'écran.
+    - Typographie agrandie haute lisibilité, anneaux de focus lumineux amplifiés, barre d'assistance télécommande.
 
 14. **Scrobble Trakt.tv Bidirectionnel & Suivi Automatique** :
     - Association de compte Trakt.tv personnalisée par profil.
-    - Envoi automatique du scrobble en temps réel (`start` à la lecture, `pause` lors des arrêts, `stop` avec marquage comme « Vu » dès 80%).
-    - Proxy sécurisé côté serveur (`/api/trakt/scrobble`) pour respecter les en-têtes officiels de l'API Trakt v2.
+    - Envoi automatique du scrobble en temps réel (`start` à la lecture, `pause`, `stop` avec marquage « Vu » dès 80%).
 
 15. **Sauvegarde, Ma Liste (Favoris) & Migration Multi-Écrans (1-Clic)** :
     - **Rail « Ma Liste » en Page d'Accueil** : accès instantané aux favoris du profil avec synchronisation multi-écrans en temps réel.
     - Sauvegarde complète de la configuration : profils, add-ons installés, bibliothèque de favoris et historique d'avancement.
     - Exportation instantanée au format JSON ou copie dans le presse-papier.
-    - Restauration multi-écrans avec modes **Fusion intelligente** (ajoute sans écraser) ou **Remplacement intégral**.
+    - Restauration multi-écrans avec modes **Fusion intelligente** ou **Remplacement intégral**.
 
 16. **Cache Intelligent Multi-Niveaux & Mode Dégradé Hors-Ligne** :
-    - **Persistance SQLite intégrée (`cache_store`)** : mise en cache automatique des requêtes add-ons Stremio pour une réactivité instantanée et une résilience réseau maximale (Métadonnées 24h, Catalogues 15m, Flux 4m, Sous-titres 1h).
+    - **Persistance SQLite intégrée (`cache_store`)** : mise en cache automatique des requêtes add-ons Stremio (Métadonnées 24h, Catalogues 15m, Flux 4m, Sous-titres 1h).
     - **Endpoint de maintenance (`POST /api/cache/purge`)** : purge automatique des entrées expirées sans blocage I/O.
 
 17. **Store d'Add-ons Communautaires Intégré (1-Clic)** :
     - **Catalogue vérifié de 13 add-ons de référence** : Torrentio, CyberFlix, OpenSubtitles v3, SubDL, Anime Kisa, Kitsu, TMDB, WatchHub, Twitch TV, YouTube Channels, Stremio Podcasts, Public Domain Movies, Anime Catalogs.
     - **Filtres par catégories thématiques** : `Tous`, `⚡ Flux & Debrid`, `📚 Catalogues SVOD`, `💬 Sous-titres`, `🎌 Animés`, `📺 Médias & Live`.
     - **Recherche en temps réel** : filtrage instantané par mots-clés, langues (VOSTFR, VF), debrid, genres.
-    - **Copie d'URL de manifest & installation 1-clic** avec indicateur d'état immédiat (« Déjà installé »).
 
 18. **Moteur de Streaming P2P Torrent & Transcodage FFmpeg Universel** :
-    - **Streaming P2P WebTorrent Séquentiel** : lecture web directe sans compte Debrid (`/api/torrent/stream?magnet=...`), priorisation séquentielle des pièces vidéo, sélecteur de fichiers de série multi-épisodes et télémétrie en direct.
+    - **Streaming P2P WebTorrent Séquentiel** : lecture web directe sans compte Debrid (`/api/torrent/stream?magnet=...`), priorisation séquentielle des pièces vidéo, sélecteur d'épisodes multi-fichiers et télémétrie en direct.
     - **Remuxing & Transcodage Audio/Vidéo FFmpeg** : remuxing audio AAC stéréo en direct pour les pistes AC3/EAC3/DTS avec horloge absolue et reprise fluide (`/api/transcode/stream?url=...`), et sonde FFprobe (`/api/transcode/probe`).
+
+19. **Panneau des Paramètres de l'Application (`SettingsModal`)** :
+    - Bouton d'accès direct dans la barre de navigation et dans le menu de profil.
+    - Configuration de la langue audio principale et de la langue des sous-titres par défaut.
+    - Mode d'activation automatique : Intelligent (VOSTFR), Toujours, Jamais.
+    - Personnalisation visuelle en direct avec cadre de prévisualisation cinématique.
+    - Paramètres du saut d'intro intelligent et du seuil de binge-watching.
+    - Choix du lecteur par défaut (Stremo Web, VLC, Just Player) et proxy de streaming.
+    - Enregistrement immédiat dans le profil SQLite et le stockage local de l'appareil.
     - **Minuteur de Sommeil (Sleep Timer)** : mise en veille paramétrable avec fondu audio progressif sur 5 secondes.
     - **Égaliseur d'Image Vidéo & Ratios d'Aspect** : formats (16:9, 21:9 Cinemascope, 4:3, zoom) et égaliseur dynamique GPU (luminosité, contraste, saturation).
     - **Signets Personnels & Fiche Filmographie Artiste (`PersonModal`)** : marqueurs de timeline interactifs et exploration de carrière en un clic.
@@ -196,9 +210,9 @@ npm start
 ```
 *Le serveur Express écoute sur `http://localhost:3001` et sert directement l'interface web optimisée ainsi que l'API sur le même port.*
 
-### 2. Lancer les tests automatisés (51 tests unitaires & intégration + 14 tests E2E Chromium)
+### 2. Lancer les tests automatisés (56 tests unitaires & intégration + 14 tests E2E Chromium)
 ```bash
-# Tests unitaires & intégration (client + serveur)
+# Tests unitaires & intégration (client + serveur) - 56 tests 100% verts
 npm test
 
 # Tests d'intégration média réels (FFmpeg + WebTorrent P2P)
@@ -206,6 +220,7 @@ cd server && node --test dist/tests/media.test.js
 
 # Audit End-to-End complet dans Chromium réel (Playwright)
 node audit_chromium_e2e.mjs
+node audit_subtitles_settings_e2e.mjs
 ```
 
 ---

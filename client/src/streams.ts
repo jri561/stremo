@@ -228,6 +228,158 @@ export function isOutroCreditsDetected(currentTime: number, duration: number, sk
   return remaining <= effectiveThreshold && remaining > 0;
 }
 
+/** Formate des secondes en mm:ss pour l'affichage des timecodes */
+export function formatTimeShort(seconds: number): string {
+  if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Détecte si le média est un anime japonais */
+export function isAnimeContent(options: {
+  title?: string;
+  genres?: string[];
+  audioLang?: string;
+}): boolean {
+  const { title = '', genres = [], audioLang = '' } = options;
+  const lowerTitle = title.toLowerCase();
+
+  if (audioLang === 'jpn' || audioLang === 'ja') return true;
+
+  if (genres.some(g => /anime|animation japon/i.test(g))) return true;
+
+  const animeKeywords = [
+    'shingeki', 'titan', 'naruto', 'one piece', 'jujutsu', 'demon slayer',
+    'kimetsu', 'bleach', 'dragon ball', 'hunter x hunter', 'my hero academia',
+    'boku no hero', 'death note', 'chainsaw man', 'tokyo ghoul', 'evangelion',
+    'solo leveling', 'frieren', 'fullmetal', 'boruto', 'vinland saga',
+    'dandadan', 'black clover', 'haikyu', 'jojo', 'kaiju no. 8'
+  ];
+  return animeKeywords.some(kw => lowerTitle.includes(kw));
+}
+
+export interface SmartIntroSkipResult {
+  canSkip: boolean;
+  skipDurationSec: number;
+  targetTime: number;
+  buttonLabel: string;
+  badgeText: string;
+  reason: 'exact' | 'anime' | 'short_episode' | 'standard_episode' | 'movie_none' | 'out_of_window';
+}
+
+/**
+ * Calcule intelligemment si un saut d'intro est opportun et détermine la durée adaptée
+ * (Anime = 90s standard TV japonaise, Séries courtes = 25s, Séries drama = 80s, Films = pas de saut aveugle, Exact = AniSkip)
+ */
+export function computeSmartIntroSkip(params: {
+  currentTime: number;
+  duration: number;
+  mediaType?: 'movie' | 'episode' | string;
+  title?: string;
+  genres?: string[];
+  audioLang?: string;
+  isSeries?: boolean;
+  exactSkip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } | null;
+  customIntroSec?: number;
+}): SmartIntroSkipResult {
+  const {
+    currentTime,
+    duration,
+    mediaType,
+    title = '',
+    genres = [],
+    audioLang = '',
+    isSeries = false,
+    exactSkip,
+    customIntroSec = 80,
+  } = params;
+
+  // 1. Cas Timecodes exacts communautaires (AniSkip ou chapitres)
+  if (exactSkip?.intro) {
+    const { start, end } = exactSkip.intro;
+    const inRange = currentTime >= Math.max(0, start - 5) && currentTime < end - 2;
+    if (inRange) {
+      const skipSec = Math.max(1, Math.round(end - currentTime));
+      return {
+        canSkip: true,
+        skipDurationSec: skipSec,
+        targetTime: end,
+        buttonLabel: "Passer l'intro",
+        badgeText: `${formatTimeShort(start)} → ${formatTimeShort(end)}`,
+        reason: 'exact',
+      };
+    }
+  }
+
+  // 2. Pour un film : pas de saut d'intro aveugle arbitraire qui ruinerait le début
+  const isMovie = mediaType === 'movie' || (!isSeries && mediaType !== 'episode');
+  if (isMovie) {
+    return {
+      canSkip: false,
+      skipDurationSec: 0,
+      targetTime: currentTime,
+      buttonLabel: "Passer l'intro",
+      badgeText: '',
+      reason: 'movie_none',
+    };
+  }
+
+  // 3. Vérification de la fenêtre temporelle d'apparition de l'intro (début de l'épisode)
+  // L'intro intervient généralement entre 10s et 5 minutes (300s)
+  if (currentTime < 5 || currentTime > 360 || duration <= 180) {
+    return {
+      canSkip: false,
+      skipDurationSec: 0,
+      targetTime: currentTime,
+      buttonLabel: "Passer l'intro",
+      badgeText: '',
+      reason: 'out_of_window',
+    };
+  }
+
+  // 4. Cas Anime : le standard japonais TV Tokyo pour un Opening est strictement 90 secondes (1min30)
+  const isAnime = isAnimeContent({ title, genres, audioLang });
+  if (isAnime) {
+    const skipSec = 90;
+    const target = Math.min(duration - 15, currentTime + skipSec);
+    return {
+      canSkip: true,
+      skipDurationSec: skipSec,
+      targetTime: target,
+      buttonLabel: "Passer l'opening",
+      badgeText: "+90s (Opening Anime)",
+      reason: 'anime',
+    };
+  }
+
+  // 5. Cas Épisode court / Sitcom / Cartoon (< 30 minutes, soit < 1800s)
+  if (duration < 1800) {
+    const skipSec = 25;
+    const target = Math.min(duration - 15, currentTime + skipSec);
+    return {
+      canSkip: true,
+      skipDurationSec: skipSec,
+      targetTime: target,
+      buttonLabel: "Passer l'intro",
+      badgeText: "+25s (Format court)",
+      reason: 'short_episode',
+    };
+  }
+
+  // 6. Cas Série drama standard (45-60 min)
+  const skipSec = Math.max(15, Math.min(120, customIntroSec));
+  const target = Math.min(duration - 15, currentTime + skipSec);
+  return {
+    canSkip: true,
+    skipDurationSec: skipSec,
+    targetTime: target,
+    buttonLabel: "Passer l'intro",
+    badgeText: `+${skipSec}s`,
+    reason: 'standard_episode',
+  };
+}
+
 /**
  * Détecte si la lecture se situe dans la plage d'introduction automatique pour une série
  */
@@ -244,7 +396,7 @@ export function shouldAutoSkipIntro(
 }
 
 /**
- * Calcule le timecode cible après le saut d'intro (ex: +85 secondes)
+ * Calcule le timecode cible après le saut d'intro (ex: +85 secondes ou adapté)
  */
 export function getIntroTargetTime(currentTime: number, duration: number, introDurationSec: number = 85): number {
   return Math.min(Math.max(0, duration - 15), currentTime + introDurationSec);

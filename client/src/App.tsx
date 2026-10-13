@@ -14,6 +14,7 @@ import {
   Database,
   Radio,
   Tv,
+  Sliders,
 } from 'lucide-react';
 import { api, accessKey, isKidsSafeItem } from './api';
 import type {
@@ -42,6 +43,7 @@ import { TraktModal } from './components/TraktModal';
 import { DeviceSyncModal } from './components/DeviceSyncModal';
 import { DownloadsModal } from './components/DownloadsModal';
 import { StatsModal } from './components/StatsModal';
+import { SettingsModal } from './components/SettingsModal';
 import { getStoredDownloads, type DownloadItem } from './downloads';
 import type { PlayerChoice } from './players';
 import { rankStreams, detectTvDevice, selectBestStreamForQuickPlay } from './streams';
@@ -87,6 +89,7 @@ export function App() {
   const [showDeviceSyncModal, setShowDeviceSyncModal] = useState(false);
   const [showDownloadsModal, setShowDownloadsModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [downloadsCount, setDownloadsCount] = useState<number>(() => getStoredDownloads().length);
   const [isQuickPlaying, setIsQuickPlaying] = useState(false);
   const [quickPlayTitle, setQuickPlayTitle] = useState('');
@@ -970,6 +973,15 @@ export function App() {
               <span className="hidden sm:inline">Lier TV</span>
             </button>
 
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Paramètres de l'application (Audio, Sous-titres, Intros)"
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Paramètres</span>
+            </button>
+
             <ProfileMenu
               profiles={profiles}
               activeProfile={activeProfile}
@@ -977,6 +989,7 @@ export function App() {
               onCreateProfile={handleCreateProfile}
               onUpdateProfile={handleUpdateProfile}
               onOpenSelector={() => setActiveProfile(null)}
+              onOpenSettings={() => setShowSettingsModal(true)}
               onOpenStats={() => setShowStatsModal(true)}
               onOpenTrakt={() => setShowTraktModal(true)}
               onOpenBackup={() => setShowBackupModal(true)}
@@ -1526,6 +1539,20 @@ export function App() {
           isOpen={showStatsModal}
           profile={activeProfile}
           onClose={() => setShowStatsModal(false)}
+        />
+      )}
+
+      {/* Modale des Paramètres Globaux de l'Application */}
+      {showSettingsModal && activeProfile && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          activeProfile={activeProfile}
+          onUpdateProfile={handleUpdateProfile}
+          defaultPlayer={selectedPlayer}
+          onSelectPlayer={handleSelectPlayer}
+          isTvMode={isTvMode}
+          onToggleTvMode={toggleTvMode}
         />
       )}
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database, Radio, BarChart3 } from 'lucide-react';
+import { User, Sparkles, Film, Plus, Check, ChevronDown, LogOut, X, Pencil, Tv, Database, Radio, BarChart3, Sliders } from 'lucide-react';
 import type { Profile } from '../api';
 
 interface Props {
@@ -29,6 +29,7 @@ interface Props {
     }
   ) => Promise<void>;
   onOpenSelector: () => void;
+  onOpenSettings?: () => void;
   onOpenStats?: () => void;
   onOpenTrakt?: () => void;
   onOpenBackup?: () => void;
@@ -44,6 +45,7 @@ export const ProfileMenu: React.FC<Props> = ({
   onCreateProfile,
   onUpdateProfile,
   onOpenSelector,
+  onOpenSettings,
   onOpenStats,
   onOpenTrakt,
   onOpenBackup,
@@ -197,6 +199,20 @@ export const ProfileMenu: React.FC<Props> = ({
           ))}
 
           <div className="pt-2 border-t border-white/5 space-y-1">
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenSettings();
+                  setIsOpen(false);
+                }}
+                className="w-full p-2 rounded-xl text-left text-xs font-bold text-indigo-300 hover:text-white hover:bg-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
+              >
+                <Sliders className="w-4 h-4 text-indigo-400" />
+                Paramètres généraux
+              </button>
+            )}
+
             {onOpenTrakt && (
               <button
                 onClick={() => {

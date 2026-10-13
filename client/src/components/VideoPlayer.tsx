@@ -24,7 +24,6 @@ import {
   Layers,
   Upload,
   Trash2,
-  FileText,
   Timer,
   Bookmark,
   BookmarkPlus,
@@ -33,18 +32,26 @@ import {
   Contrast,
   Sparkles,
   Film,
+  Search,
+  Palette,
 } from 'lucide-react';
 import { api, type StreamSource, type BookmarkItem } from '../api';
 import { getAndroidIntentUrl } from '../players';
-import { createLocalSubtitleTrack, type SubtitleTrack } from '../subtitles';
+import {
+  createLocalSubtitleTrack,
+  type SubtitleTrack,
+  generateSubtitleCss,
+  groupSubtitlesByLanguage,
+  getLanguageInfo,
+} from '../subtitles';
 import {
   isOutroCreditsDetected,
   shouldAutoSkipIntro,
-  getIntroTargetTime,
   getNextFallbackStream,
   parseStream,
   detectStreamAudioLanguage,
   matchSmartSubtitle,
+  computeSmartIntroSkip,
 } from '../streams';
 import { installTranscodeClock, type TranscodeClock } from '../transcodeClock';
 
@@ -116,7 +123,18 @@ export const VideoPlayer: React.FC<Props> = ({
   const [selectedSub, setSelectedSub] = useState<string | null>(null);
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [subDelay, setSubDelay] = useState<number>(0);
-  const [subSize, setSubSize] = useState<'normal' | 'lg' | 'xl'>('normal');
+  const [subSize, setSubSize] = useState<'sm' | 'normal' | 'lg' | 'xl'>(() => {
+    return (localStorage.getItem('stremo_sub_size') as any) || 'normal';
+  });
+  const [subColor, setSubColor] = useState<'white' | 'yellow' | 'cyan'>(() => {
+    return (localStorage.getItem('stremo_sub_color') as any) || 'white';
+  });
+  const [subBg, setSubBg] = useState<'none' | 'translucent' | 'solid'>(() => {
+    return (localStorage.getItem('stremo_sub_bg') as any) || 'translucent';
+  });
+  const [subSearchQuery, setSubSearchQuery] = useState('');
+  const [subActiveLangFilter, setSubActiveLangFilter] = useState<string>('all');
+  const [subTab, setSubTab] = useState<'tracks' | 'style'>('tracks');
   const [localSubtitles, setLocalSubtitles] = useState<SubtitleTrack[]>([]);
   const [isDraggingSub, setIsDraggingSub] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -124,6 +142,10 @@ export const VideoPlayer: React.FC<Props> = ({
   const effectiveSubtitles = useMemo(() => {
     return [...(subtitles || []), ...localSubtitles];
   }, [subtitles, localSubtitles]);
+
+  const subtitleGroups = useMemo(() => {
+    return groupSubtitlesByLanguage(effectiveSubtitles);
+  }, [effectiveSubtitles]);
 
   // Playback speed
   const [playbackRate, setPlaybackRate] = useState<number>(1);
@@ -160,6 +182,19 @@ export const VideoPlayer: React.FC<Props> = ({
     intro?: { start: number; end: number };
     outro?: { start: number; end: number };
   } | null>(null);
+
+  // Calcul intelligent et adaptatif du saut d'intro (Anime 90s, Sitcom 25s, Drama 80s, Film désactivé)
+  const smartIntro = useMemo(() => {
+    return computeSmartIntroSkip({
+      currentTime,
+      duration,
+      mediaType: mediaInfo?.type,
+      title: mediaInfo?.title || title,
+      isSeries,
+      exactSkip,
+      customIntroSec: introDurationSec,
+    });
+  }, [currentTime, duration, mediaInfo, title, isSeries, exactSkip, introDurationSec]);
 
   // Proxy de streaming vidéo (contournement CORS & compatibilité Web)
   const triedProxyRef = useRef(false);
@@ -741,28 +776,23 @@ export const VideoPlayer: React.FC<Props> = ({
       onProgress(curr, dur);
     }
 
-    // Saut précis AniSkip si disponible, sinon heuristique
-    if (exactSkip?.intro && autoSkipIntro && !hasAutoSkippedIntroRef.current) {
-      if (curr >= exactSkip.intro.start && curr < exactSkip.intro.end) {
+    // Saut d'intro automatique intelligent (AniSkip ou durée adaptée Anime/Sitcom/Série)
+    if (autoSkipIntro && !hasAutoSkippedIntroRef.current && smartIntro.canSkip) {
+      if (exactSkip?.intro && curr >= exactSkip.intro.start && curr < exactSkip.intro.end) {
         hasAutoSkippedIntroRef.current = true;
         if (videoRef.current) {
           videoRef.current.currentTime = exactSkip.intro.end;
           setSkipToast("Opening sauté automatiquement (AniSkip) ⏭️");
           setTimeout(() => setSkipToast(null), 2500);
         }
-      }
-    } else if (
-      (isSeries || mediaInfo?.type === 'episode') &&
-      autoSkipIntro &&
-      !hasAutoSkippedIntroRef.current &&
-      shouldAutoSkipIntro(curr, dur, autoSkipIntro)
-    ) {
-      hasAutoSkippedIntroRef.current = true;
-      const targetTime = getIntroTargetTime(curr, dur, introDurationSec);
-      if (videoRef.current) {
-        videoRef.current.currentTime = targetTime;
-        setSkipToast(`Intro sautée automatiquement (+${introDurationSec}s) ⏭️`);
-        setTimeout(() => setSkipToast(null), 2500);
+      } else if (shouldAutoSkipIntro(curr, dur, autoSkipIntro)) {
+        hasAutoSkippedIntroRef.current = true;
+        const targetTime = smartIntro.targetTime;
+        if (videoRef.current) {
+          videoRef.current.currentTime = targetTime;
+          setSkipToast(`${smartIntro.buttonLabel} sautée automatiquement (${smartIntro.badgeText}) ⏭️`);
+          setTimeout(() => setSkipToast(null), 2500);
+        }
       }
     }
 
@@ -785,10 +815,13 @@ export const VideoPlayer: React.FC<Props> = ({
 
   const handleSkipIntro = () => {
     if (!videoRef.current) return;
-    const skipAmount = 85;
-    videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + skipAmount);
-    setSkipToast("Intro sautée (+85s)");
-    setTimeout(() => setSkipToast(null), 1800);
+    const target = smartIntro.canSkip ? smartIntro.targetTime : Math.min(duration, videoRef.current.currentTime + 80);
+    const diff = Math.round(target - videoRef.current.currentTime);
+    videoRef.current.currentTime = target;
+    const label = smartIntro.buttonLabel || "Intro";
+    const badge = smartIntro.badgeText ? ` (${smartIntro.badgeText})` : ` (+${diff}s)`;
+    setSkipToast(`${label} sautée${badge} ⏭️`);
+    setTimeout(() => setSkipToast(null), 2000);
   };
 
   const handleSkipToNextEpisode = () => {
@@ -1320,16 +1353,7 @@ export const VideoPlayer: React.FC<Props> = ({
       )}
 
       {/* Style dynamique pour la taille et le contraste des sous-titres */}
-      <style>{`
-        video::cue {
-          font-size: ${subSize === 'xl' ? '1.8rem' : subSize === 'lg' ? '1.4rem' : '1.1rem'} !important;
-          background: rgba(0, 0, 0, 0.75) !important;
-          color: #ffffff !important;
-          text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
-          border-radius: 4px;
-          padding: 2px 8px;
-        }
-      `}</style>
+      <style>{generateSubtitleCss({ size: subSize, color: subColor, background: subBg })}</style>
 
       {/* Toast d'action éphémère */}
       {skipToast && (
@@ -1339,16 +1363,18 @@ export const VideoPlayer: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Bouton Flottant : Passer l'intro (+85s) */}
-      {currentTime >= 10 && currentTime <= 240 && duration > 200 && nextCountdown === null && (
+      {/* Bouton Flottant Intelligent : Passer l'intro / opening */}
+      {smartIntro.canSkip && nextCountdown === null && (
         <button
           onClick={handleSkipIntro}
-          className="absolute bottom-24 right-6 sm:right-8 z-40 px-4 py-2.5 rounded-2xl bg-[#111622]/90 hover:bg-[#182135] text-white border border-white/20 hover:border-indigo-400 backdrop-blur-md text-xs font-bold shadow-2xl transition flex items-center gap-2 cursor-pointer group pointer-events-auto"
-          title="Passer le générique d'ouverture (Raccourci : S)"
+          className="absolute bottom-24 right-6 sm:right-8 z-40 px-4 py-2.5 rounded-2xl bg-[#111622]/95 hover:bg-[#182135] text-white border border-indigo-500/40 hover:border-indigo-400 backdrop-blur-md text-xs font-bold shadow-2xl transition flex items-center gap-2 cursor-pointer group pointer-events-auto ring-1 ring-indigo-500/20"
+          title={`${smartIntro.buttonLabel} (Raccourci : S)`}
         >
           <FastForward className="w-4 h-4 text-indigo-400 group-hover:translate-x-0.5 transition" />
-          <span>Passer l'intro</span>
-          <span className="text-[10px] text-slate-400 bg-white/10 px-1.5 py-0.5 rounded font-mono">+85s</span>
+          <span>{smartIntro.buttonLabel}</span>
+          <span className="text-[10px] text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded font-mono border border-indigo-500/30">
+            {smartIntro.badgeText}
+          </span>
         </button>
       )}
 
@@ -2124,163 +2150,378 @@ export const VideoPlayer: React.FC<Props> = ({
                 </button>
 
                 {showSubMenu && (
-                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-black uppercase text-slate-400">
-                          Pistes de sous-titres
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {effectiveSubtitles.length} piste(s)
-                        </span>
-                      </div>
-                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                  <div className="absolute right-0 bottom-full mb-3 w-88 bg-[#0e131f] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-2.5 backdrop-blur-xl ring-1 ring-white/5">
+                    {/* En-tête et onglets du menu */}
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <div className="flex items-center gap-1 bg-white/5 p-0.5 rounded-xl text-[11px] font-bold">
                         <button
-                          onClick={() => {
-                            setSelectedSub(null);
-                            setShowSubMenu(false);
-                          }}
-                          className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
-                            selectedSub === null
-                              ? 'bg-indigo-600/20 text-indigo-300'
-                              : 'text-slate-300 hover:bg-white/5'
+                          type="button"
+                          onClick={() => setSubTab('tracks')}
+                          className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                            subTab === 'tracks'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          <span>Désactivés</span>
-                          {selectedSub === null && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                          <Subtitles className="w-3 h-3" />
+                          <span>Pistes ({effectiveSubtitles.length})</span>
                         </button>
-
-                        {effectiveSubtitles.length === 0 ? (
-                          <div className="p-2.5 my-1 bg-white/5 rounded-xl text-center space-y-1">
-                            <div className="text-xs text-slate-300 font-semibold">Aucune piste en ligne</div>
-                            <div className="text-[10px] text-slate-400">Glissez un fichier .srt ou .vtt sur la vidéo pour l'ajouter.</div>
-                          </div>
-                        ) : (
-                          effectiveSubtitles.map((sub) => (
-                            <div
-                              key={sub.id}
-                              className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between group ${
-                                selectedSub === sub.id
-                                  ? 'bg-indigo-600/20 text-indigo-300'
-                                  : 'text-slate-300 hover:bg-white/5'
-                              }`}
-                            >
-                              <button
-                                onClick={() => {
-                                  setSelectedSub(sub.id);
-                                  setShowSubMenu(false);
-                                }}
-                                className="flex-1 flex items-center gap-1.5 text-left truncate cursor-pointer"
-                              >
-                                {sub.isLocal ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase">
-                                    Local
-                                  </span>
-                                ) : (
-                                  <FileText className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                )}
-                                <span className="truncate max-w-[170px]" title={sub.lang}>
-                                  {sub.lang}
-                                  {!sub.isLocal && ` (${sub.addonName || 'OpenSubtitles'})`}
-                                </span>
-                              </button>
-
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {sub.isLocal && (
-                                  <button
-                                    onClick={(e) => handleRemoveLocalSub(sub.id, e)}
-                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
-                                    title="Supprimer ce sous-titre local"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                )}
-                                {selectedSub === sub.id && <Check className="w-3.5 h-3.5 text-indigo-400 ml-1" />}
-                              </div>
-                            </div>
-                          ))
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSubTab('style')}
+                          className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                            subTab === 'style'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Palette className="w-3 h-3" />
+                          <span>Style</span>
+                        </button>
                       </div>
-                    </div>
 
-                    {/* Import manuel de sous-titres locaux */}
-                    <div className="pt-2 border-t border-white/5">
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full py-1.5 px-2.5 rounded-xl bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 hover:text-white border border-indigo-500/25 text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                        onClick={() => setShowSubMenu(false)}
+                        className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                        title="Fermer"
                       >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Importer un fichier (.srt, .vtt)</span>
+                        <X className="w-3.5 h-3.5" />
                       </button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".srt,.vtt"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            handleImportSubtitleFile(file);
-                            e.target.value = '';
-                          }
-                        }}
-                      />
                     </div>
 
-                    {/* Synchronisation / Décalage */}
-                    <div className="pt-2 border-t border-white/5">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
-                          <Sliders className="w-3 h-3" /> Synchronisation
-                        </span>
-                        <span className="text-xs font-bold text-indigo-300">
-                          {subDelay > 0 ? `+${subDelay}s` : `${subDelay}s`}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        <button
-                          onClick={() => handleAdjustSubDelay(-0.5)}
-                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
-                        >
-                          -0.5s
-                        </button>
-                        <button
-                          onClick={handleResetSubDelay}
-                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-400 hover:text-white transition cursor-pointer text-center"
-                        >
-                          0s (Reset)
-                        </button>
-                        <button
-                          onClick={() => handleAdjustSubDelay(0.5)}
-                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
-                        >
-                          +0.5s
-                        </button>
-                      </div>
-                    </div>
+                    {/* Onglet 1 : Pistes & Langues */}
+                    {subTab === 'tracks' && (
+                      <div className="space-y-2">
+                        {/* Recherche & Filtres par langue */}
+                        {effectiveSubtitles.length > 3 && (
+                          <div className="space-y-1.5">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="Filtrer les langues..."
+                                value={subSearchQuery}
+                                onChange={(e) => setSubSearchQuery(e.target.value)}
+                                className="w-full pl-8 pr-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
 
-                    {/* Taille des sous-titres */}
-                    <div className="pt-2 border-t border-white/5">
-                      <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5">
-                        Taille du texte
-                      </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {(['normal', 'lg', 'xl'] as const).map((sz) => (
+                            {/* Puces de langues */}
+                            {subtitleGroups.length > 1 && (
+                              <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setSubActiveLangFilter('all')}
+                                  className={`px-2 py-0.5 rounded-full shrink-0 font-bold transition cursor-pointer ${
+                                    subActiveLangFilter === 'all'
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-white/5 text-slate-400 hover:text-white'
+                                  }`}
+                                >
+                                  Tous ({effectiveSubtitles.length})
+                                </button>
+                                {subtitleGroups.map((g) => (
+                                  <button
+                                    key={g.code}
+                                    type="button"
+                                    onClick={() => setSubActiveLangFilter(g.code)}
+                                    className={`px-2 py-0.5 rounded-full shrink-0 font-bold transition cursor-pointer flex items-center gap-1 ${
+                                      subActiveLangFilter === g.code
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-white/5 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <span>{g.flag}</span>
+                                    <span>{g.label}</span>
+                                    <span className="opacity-70">({g.tracks.length})</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Liste déroulante des pistes */}
+                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                          {/* Option Désactiver */}
                           <button
-                            key={sz}
-                            onClick={() => setSubSize(sz)}
-                            className={`py-1 px-1 rounded-lg text-[11px] font-bold transition cursor-pointer text-center ${
-                              subSize === sz
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
+                            type="button"
+                            onClick={() => {
+                              setSelectedSub(null);
+                              setShowSubMenu(false);
+                            }}
+                            className={`w-full p-2 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
+                              selectedSub === null
+                                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
+                                : 'text-slate-300 hover:bg-white/5'
                             }`}
                           >
-                            {sz === 'normal' ? 'Normal' : sz === 'lg' ? 'Grand' : 'Maxi'}
+                            <span>Désactivés (Aucun sous-titre)</span>
+                            {selectedSub === null && <Check className="w-3.5 h-3.5 text-indigo-400" />}
                           </button>
-                        ))}
+
+                          {effectiveSubtitles.length === 0 ? (
+                            <div className="p-3 my-1 bg-white/5 rounded-xl text-center space-y-1">
+                              <div className="text-xs text-slate-300 font-semibold">Aucune piste trouvée</div>
+                              <div className="text-[10px] text-slate-400">
+                                Importez un fichier .srt ou .vtt ci-dessous.
+                              </div>
+                            </div>
+                          ) : (
+                            subtitleGroups
+                              .filter((g) => subActiveLangFilter === 'all' || g.code === subActiveLangFilter)
+                              .map((group) => {
+                                const matchingTracks = group.tracks.filter((t) => {
+                                  if (!subSearchQuery.trim()) return true;
+                                  const q = subSearchQuery.toLowerCase();
+                                  return (
+                                    t.lang.toLowerCase().includes(q) ||
+                                    group.label.toLowerCase().includes(q) ||
+                                    (t.addonName || '').toLowerCase().includes(q)
+                                  );
+                                });
+
+                                if (matchingTracks.length === 0) return null;
+
+                                return (
+                                  <div key={group.code} className="pt-1">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1 py-0.5 flex items-center gap-1.5">
+                                      <span>{group.flag}</span>
+                                      <span>{group.label}</span>
+                                      <span className="text-[9px] text-slate-400 font-normal">
+                                        ({matchingTracks.length})
+                                      </span>
+                                    </div>
+
+                                    {matchingTracks.map((sub) => {
+                                      const info = getLanguageInfo(sub.lang);
+                                      return (
+                                        <div
+                                          key={sub.id}
+                                          className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between group my-0.5 ${
+                                            selectedSub === sub.id
+                                              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
+                                              : 'text-slate-300 hover:bg-white/5'
+                                          }`}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedSub(sub.id);
+                                              setShowSubMenu(false);
+                                            }}
+                                            className="flex-1 flex items-center gap-2 text-left truncate cursor-pointer"
+                                          >
+                                            <span className="text-sm shrink-0">{info.flag}</span>
+                                            <div className="truncate flex-1 min-w-0">
+                                              <span className="text-xs block truncate" title={sub.lang}>
+                                                {info.cleanName}
+                                              </span>
+                                              <span className="text-[9px] text-slate-400 block truncate">
+                                                {sub.isLocal ? 'Fichier importé' : sub.addonName || 'OpenSubtitles'}
+                                              </span>
+                                            </div>
+
+                                            {info.isForced && (
+                                              <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[8px] font-black uppercase">
+                                                Forcé
+                                              </span>
+                                            )}
+                                            {info.isSdh && (
+                                              <span className="px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[8px] font-black uppercase">
+                                                SDH
+                                              </span>
+                                            )}
+                                            {sub.isLocal && (
+                                              <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[8px] font-black uppercase">
+                                                Local
+                                              </span>
+                                            )}
+                                          </button>
+
+                                          <div className="flex items-center gap-1 shrink-0 ml-1">
+                                            {sub.isLocal && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => handleRemoveLocalSub(sub.id, e)}
+                                                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
+                                                title="Supprimer ce sous-titre local"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                            {selectedSub === sub.id && (
+                                              <Check className="w-3.5 h-3.5 text-indigo-400 ml-1" />
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })
+                          )}
+                        </div>
+
+                        {/* Import manuel de sous-titres locaux */}
+                        <div className="pt-2 border-t border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full py-1.5 px-2.5 rounded-xl bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 hover:text-white border border-indigo-500/25 text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Importer un fichier (.srt, .vtt)</span>
+                          </button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".srt,.vtt"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleImportSubtitleFile(file);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Onglet 2 : Style & Apparence */}
+                    {subTab === 'style' && (
+                      <div className="space-y-3 pt-1">
+                        {/* Taille */}
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                            Taille du texte
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[
+                              { id: 'sm', label: 'Petite' },
+                              { id: 'normal', label: 'Normale' },
+                              { id: 'lg', label: 'Grande' },
+                              { id: 'xl', label: 'Maxi' },
+                            ].map((sz) => (
+                              <button
+                                key={sz.id}
+                                type="button"
+                                onClick={() => {
+                                  setSubSize(sz.id as any);
+                                  localStorage.setItem('stremo_sub_size', sz.id);
+                                }}
+                                className={`py-1.5 px-1 rounded-xl text-[11px] font-bold transition cursor-pointer text-center ${
+                                  subSize === sz.id
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                                }`}
+                              >
+                                {sz.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Couleur */}
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                            Couleur du texte
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: 'white', label: 'Blanc', colorClass: 'bg-white text-slate-900' },
+                              { id: 'yellow', label: 'Jaune Cinéma 🎬', colorClass: 'bg-amber-300 text-amber-950' },
+                              { id: 'cyan', label: 'Cyan', colorClass: 'bg-cyan-300 text-cyan-950' },
+                            ].map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setSubColor(c.id as any);
+                                  localStorage.setItem('stremo_sub_color', c.id);
+                                }}
+                                className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition cursor-pointer text-center border ${
+                                  subColor === c.id
+                                    ? 'border-indigo-400 bg-indigo-600/20 text-white'
+                                    : 'border-white/5 bg-white/5 hover:bg-white/10 text-slate-300'
+                                }`}
+                              >
+                                <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle ${c.colorClass}`} />
+                                {c.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Arrière-plan */}
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                            Arrière-plan & Contraste
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {[
+                              { id: 'none', label: 'Ombre seule' },
+                              { id: 'translucent', label: 'Translucide' },
+                              { id: 'solid', label: 'Boîte opaque' },
+                            ].map((bg) => (
+                              <button
+                                key={bg.id}
+                                type="button"
+                                onClick={() => {
+                                  setSubBg(bg.id as any);
+                                  localStorage.setItem('stremo_sub_bg', bg.id);
+                                }}
+                                className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition cursor-pointer text-center ${
+                                  subBg === bg.id
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                                }`}
+                              >
+                                {bg.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Décalage temporel / Synchronisation */}
+                        <div className="pt-2 border-t border-white/5">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
+                              <Sliders className="w-3 h-3" /> Synchronisation
+                            </span>
+                            <span className="text-xs font-bold text-indigo-300">
+                              {subDelay > 0 ? `+${subDelay}s` : `${subDelay}s`}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustSubDelay(-0.5)}
+                              className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
+                            >
+                              -0.5s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleResetSubDelay}
+                              className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-400 hover:text-white transition cursor-pointer text-center"
+                            >
+                              0s (Reset)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustSubDelay(0.5)}
+                              className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
+                            >
+                              +0.5s
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
