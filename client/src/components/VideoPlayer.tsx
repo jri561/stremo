@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Hls from 'hls.js';
 import {
   Play,
@@ -22,9 +22,13 @@ import {
   Cast,
   Moon,
   Layers,
+  Upload,
+  Trash2,
+  FileText,
 } from 'lucide-react';
 import { api, type StreamSource } from '../api';
 import { getAndroidIntentUrl } from '../players';
+import { createLocalSubtitleTrack, type SubtitleTrack } from '../subtitles';
 import {
   isOutroCreditsDetected,
   shouldAutoSkipIntro,
@@ -55,7 +59,7 @@ export interface TraktMediaInfo {
 interface Props {
   streamUrl: string;
   title: string;
-  subtitles?: { id: string; lang: string; url: string; addonName?: string }[];
+  subtitles?: SubtitleTrack[];
   initialTime?: number;
   nextEpisode?: NextEpisodeInfo | null;
   profileId?: string;
@@ -102,6 +106,13 @@ export const VideoPlayer: React.FC<Props> = ({
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [subDelay, setSubDelay] = useState<number>(0);
   const [subSize, setSubSize] = useState<'normal' | 'lg' | 'xl'>('normal');
+  const [localSubtitles, setLocalSubtitles] = useState<SubtitleTrack[]>([]);
+  const [isDraggingSub, setIsDraggingSub] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const effectiveSubtitles = useMemo(() => {
+    return [...(subtitles || []), ...localSubtitles];
+  }, [subtitles, localSubtitles]);
 
   // Playback speed
   const [playbackRate, setPlaybackRate] = useState<number>(1);
@@ -284,14 +295,14 @@ export const VideoPlayer: React.FC<Props> = ({
 
     for (let i = 0; i < video.textTracks.length; i++) {
       const track = video.textTracks[i];
-      const matchingSub = subtitles[i];
+      const matchingSub = effectiveSubtitles[i];
       if (matchingSub && matchingSub.id === selectedSub) {
         track.mode = 'showing';
       } else {
         track.mode = 'disabled';
       }
     }
-  }, [selectedSub, subtitles]);
+  }, [selectedSub, effectiveSubtitles]);
 
   // Écoute des commandes de télécommande mobile en direct (SSE)
   useEffect(() => {
@@ -537,6 +548,58 @@ export const VideoPlayer: React.FC<Props> = ({
     }
   };
 
+  // Drag & drop et importation de sous-titres locaux (.srt / .vtt)
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer?.types?.includes('Files')) {
+      setIsDraggingSub(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingSub(false);
+  };
+
+  const handleImportSubtitleFile = async (file: File) => {
+    try {
+      const track = await createLocalSubtitleTrack(file);
+      setLocalSubtitles((prev) => [...prev, track]);
+      setSelectedSub(track.id);
+      setSkipToast(`Sous-titre local activé : ${file.name} 💬`);
+      setTimeout(() => setSkipToast(null), 3500);
+    } catch (err) {
+      console.error('Erreur chargement sous-titre local:', err);
+      setSkipToast('Erreur : impossible de lire ce fichier de sous-titres');
+      setTimeout(() => setSkipToast(null), 3000);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingSub(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const subFile = files.find((f) => f.name.match(/\.(srt|vtt)$/i));
+    if (subFile) {
+      await handleImportSubtitleFile(subFile);
+    } else if (files.length > 0) {
+      setSkipToast('Format non supporté (utilisez un fichier .srt ou .vtt)');
+      setTimeout(() => setSkipToast(null), 3000);
+    }
+  };
+
+  const handleRemoveLocalSub = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLocalSubtitles((prev) => prev.filter((s) => s.id !== id));
+    if (selectedSub === id) {
+      setSelectedSub(null);
+    }
+  };
+
   // Google Cast / AirPlay
   const handleCast = async () => {
     const video = videoRef.current;
@@ -737,6 +800,9 @@ export const VideoPlayer: React.FC<Props> = ({
       ref={containerRef}
       onMouseMove={resetHideTimer}
       onClick={resetHideTimer}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden"
     >
       <video
@@ -751,7 +817,7 @@ export const VideoPlayer: React.FC<Props> = ({
         crossOrigin="anonymous"
         playsInline
       >
-        {subtitles.map((sub) => (
+        {effectiveSubtitles.map((sub) => (
           <track
             key={sub.id}
             kind="subtitles"
@@ -762,6 +828,15 @@ export const VideoPlayer: React.FC<Props> = ({
           />
         ))}
       </video>
+
+      {/* Drag & Drop Subtitles Overlay */}
+      {isDraggingSub && (
+        <div className="absolute inset-0 z-50 bg-indigo-950/85 backdrop-blur-md flex flex-col items-center justify-center border-4 border-dashed border-indigo-400 pointer-events-none animate-fade-in p-6 text-center">
+          <Upload className="w-16 h-16 text-indigo-300 animate-bounce mb-3" />
+          <h3 className="text-xl font-bold text-white mb-1">Déposez votre fichier de sous-titres ici</h3>
+          <p className="text-sm text-indigo-200">Prise en charge instantanée des fichiers .srt et .vtt</p>
+        </div>
+      )}
 
       {/* Buffering Indicator */}
       {buffering && !playbackError && (
@@ -1284,126 +1359,188 @@ export const VideoPlayer: React.FC<Props> = ({
               </div>
 
               {/* Subtitles & Delay Button */}
-              {subtitles.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => {
-                      setShowSubMenu(!showSubMenu);
-                      setShowSpeedMenu(false);
-                      setShowSkipMenu(false);
-                    }}
-                    className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
-                      selectedSub
-                        ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
-                        : 'text-slate-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Sous-titres et synchronisation"
-                  >
-                    <Subtitles className="w-4 h-4" />
-                    <span className="text-xs font-bold hidden sm:inline">Sous-titres</span>
-                  </button>
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowSubMenu(!showSubMenu);
+                    setShowSpeedMenu(false);
+                    setShowSkipMenu(false);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                    selectedSub
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Sous-titres, synchronisation et import local"
+                >
+                  <Subtitles className="w-4 h-4" />
+                  <span className="text-xs font-bold hidden sm:inline">Sous-titres</span>
+                  {localSubtitles.length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  )}
+                </button>
 
-                  {showSubMenu && (
-                    <div className="absolute right-0 bottom-full mb-3 w-72 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
-                      <div>
-                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5">
+                {showSubMenu && (
+                  <div className="absolute right-0 bottom-full mb-3 w-80 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-black uppercase text-slate-400">
                           Pistes de sous-titres
-                        </div>
-                        <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                          <button
-                            onClick={() => {
-                              setSelectedSub(null);
-                              setShowSubMenu(false);
-                            }}
-                            className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
-                              selectedSub === null
-                                ? 'bg-indigo-600/20 text-indigo-300'
-                                : 'text-slate-300 hover:bg-white/5'
-                            }`}
-                          >
-                            <span>Désactivés</span>
-                            {selectedSub === null && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                          </button>
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {effectiveSubtitles.length} piste(s)
+                        </span>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                        <button
+                          onClick={() => {
+                            setSelectedSub(null);
+                            setShowSubMenu(false);
+                          }}
+                          className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
+                            selectedSub === null
+                              ? 'bg-indigo-600/20 text-indigo-300'
+                              : 'text-slate-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <span>Désactivés</span>
+                          {selectedSub === null && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
 
-                          {subtitles.map((sub) => (
-                            <button
+                        {effectiveSubtitles.length === 0 ? (
+                          <div className="p-2.5 my-1 bg-white/5 rounded-xl text-center space-y-1">
+                            <div className="text-xs text-slate-300 font-semibold">Aucune piste en ligne</div>
+                            <div className="text-[10px] text-slate-400">Glissez un fichier .srt ou .vtt sur la vidéo pour l'ajouter.</div>
+                          </div>
+                        ) : (
+                          effectiveSubtitles.map((sub) => (
+                            <div
                               key={sub.id}
-                              onClick={() => {
-                                setSelectedSub(sub.id);
-                                setShowSubMenu(false);
-                              }}
-                              className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
+                              className={`w-full p-1.5 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between group ${
                                 selectedSub === sub.id
                                   ? 'bg-indigo-600/20 text-indigo-300'
                                   : 'text-slate-300 hover:bg-white/5'
                               }`}
                             >
-                              <span className="capitalize truncate max-w-[190px]">
-                                {sub.lang} ({sub.addonName || 'OpenSubtitles'})
-                              </span>
-                              {selectedSub === sub.id && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                              <button
+                                onClick={() => {
+                                  setSelectedSub(sub.id);
+                                  setShowSubMenu(false);
+                                }}
+                                className="flex-1 flex items-center gap-1.5 text-left truncate cursor-pointer"
+                              >
+                                {sub.isLocal ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase">
+                                    Local
+                                  </span>
+                                ) : (
+                                  <FileText className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                )}
+                                <span className="truncate max-w-[170px]" title={sub.lang}>
+                                  {sub.lang}
+                                  {!sub.isLocal && ` (${sub.addonName || 'OpenSubtitles'})`}
+                                </span>
+                              </button>
 
-                      {/* Synchronisation / Décalage */}
-                      <div className="pt-2 border-t border-white/5">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
-                            <Sliders className="w-3 h-3" /> Synchronisation
-                          </span>
-                          <span className="text-xs font-bold text-indigo-300">
-                            {subDelay > 0 ? `+${subDelay}s` : `${subDelay}s`}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1">
-                          <button
-                            onClick={() => handleAdjustSubDelay(-0.5)}
-                            className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
-                          >
-                            -0.5s
-                          </button>
-                          <button
-                            onClick={handleResetSubDelay}
-                            className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-400 hover:text-white transition cursor-pointer text-center"
-                          >
-                            0s (Reset)
-                          </button>
-                          <button
-                            onClick={() => handleAdjustSubDelay(0.5)}
-                            className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
-                          >
-                            +0.5s
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Taille des sous-titres */}
-                      <div className="pt-2 border-t border-white/5">
-                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5">
-                          Taille du texte
-                        </div>
-                        <div className="grid grid-cols-3 gap-1">
-                          {(['normal', 'lg', 'xl'] as const).map((sz) => (
-                            <button
-                              key={sz}
-                              onClick={() => setSubSize(sz)}
-                              className={`py-1 px-1 rounded-lg text-[11px] font-bold transition cursor-pointer text-center ${
-                                subSize === sz
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
-                              }`}
-                            >
-                              {sz === 'normal' ? 'Normal' : sz === 'lg' ? 'Grand' : 'Maxi'}
-                            </button>
-                          ))}
-                        </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {sub.isLocal && (
+                                  <button
+                                    onClick={(e) => handleRemoveLocalSub(sub.id, e)}
+                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
+                                    title="Supprimer ce sous-titre local"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {selectedSub === sub.id && <Check className="w-3.5 h-3.5 text-indigo-400 ml-1" />}
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {/* Import manuel de sous-titres locaux */}
+                    <div className="pt-2 border-t border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full py-1.5 px-2.5 rounded-xl bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 hover:text-white border border-indigo-500/25 text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Importer un fichier (.srt, .vtt)</span>
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".srt,.vtt"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleImportSubtitleFile(file);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* Synchronisation / Décalage */}
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
+                          <Sliders className="w-3 h-3" /> Synchronisation
+                        </span>
+                        <span className="text-xs font-bold text-indigo-300">
+                          {subDelay > 0 ? `+${subDelay}s` : `${subDelay}s`}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          onClick={() => handleAdjustSubDelay(-0.5)}
+                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
+                        >
+                          -0.5s
+                        </button>
+                        <button
+                          onClick={handleResetSubDelay}
+                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-400 hover:text-white transition cursor-pointer text-center"
+                        >
+                          0s (Reset)
+                        </button>
+                        <button
+                          onClick={() => handleAdjustSubDelay(0.5)}
+                          className="py-1 px-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-slate-300 hover:text-white transition cursor-pointer text-center"
+                        >
+                          +0.5s
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Taille des sous-titres */}
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="text-[10px] font-black uppercase text-slate-400 mb-1.5">
+                        Taille du texte
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(['normal', 'lg', 'xl'] as const).map((sz) => (
+                          <button
+                            key={sz}
+                            onClick={() => setSubSize(sz)}
+                            className={`py-1 px-1 rounded-lg text-[11px] font-bold transition cursor-pointer text-center ${
+                              subSize === sz
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            {sz === 'normal' ? 'Normal' : sz === 'lg' ? 'Grand' : 'Maxi'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Sélecteur de flux alternatifs en cours de lecture */}
               {availableStreams && availableStreams.length > 1 && onSelectStream && (

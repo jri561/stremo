@@ -61,6 +61,22 @@ export interface WatchProgress {
   completed: number;
   updatedAt: string;
 }
+export interface NextUpItem {
+  id: string;
+  seriesId: string;
+  seriesTitle: string;
+  title: string;
+  type: 'series';
+  poster?: string;
+  season: number;
+  episode: number;
+  isNextEpisode: boolean;
+  currentTime: number;
+  duration: number;
+  progressPercent: number;
+  updatedAt: string;
+}
+
 export interface ProfileStats {
   totalWatchTimeSeconds: number;
   totalWatchTimeFormatted: string;
@@ -115,6 +131,7 @@ export interface CatalogItem {
   duration?: number;
   season?: number;
   episode?: number;
+  isNextEpisode?: boolean;
 }
 
 const ADULT_GENRES_RE = /\b(horror|horreur|thriller|crime|erotic|érotique|war|guerre|gore|zombie|adult|mystery|policier)\b/i;
@@ -233,6 +250,16 @@ export const api = {
     const res = await fetch(`${API_BASE}/progress/${profileId}`);
     const data = await res.json();
     return data.progress || [];
+  },
+  getNextUp: async (profileId: string): Promise<NextUpItem[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/profiles/${profileId}/next-up`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.nextUp || [];
+    } catch {
+      return [];
+    }
   },
   saveProgress: async (item: Partial<WatchProgress>): Promise<void> => {
     await fetch(`${API_BASE}/progress`, {
@@ -468,6 +495,7 @@ export const api = {
   },
   getProxiedSubtitleUrl: (originalUrl: string): string => {
     if (!originalUrl) return originalUrl;
+    if (originalUrl.startsWith('blob:') || originalUrl.startsWith('data:')) return originalUrl;
     return `${API_BASE}/proxy/subtitle?url=${encodeURIComponent(originalUrl)}`;
   },
   getSkipTimes: async (

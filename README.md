@@ -59,11 +59,24 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - **Proxy de téléchargement forcé avec nom propre** : injection automatique de l'en-tête `Content-Disposition: attachment; filename="Titre.mp4"` via le proxy Express (`/api/proxy/stream?download=1`).
    - **Lecture directe hors-ligne** : rejoue le flux téléchargé directement dans le lecteur Stremo sans configuration.
 
-8. **Tableau de Bord de Statistiques de Visionnage (« Mes Statistiques »)** :
+8. **Rail Dynamique « ⚡ À Suivre / Prochains Épisodes » (Next Up Queue)** :
+   - **Algorithme d'enchaînement de séries** : détection immédiate des séries actives. Dès qu'un épisode est complété (>85%), Stremo suggère l'épisode suivant (`S{s}E{e+1}`) en tête de l'écran d'accueil avec badge émeraude « À suivre ».
+   - **Lecture rapide 1-clic** : lancement direct du streaming de l'épisode suivant sans passer par la modale.
+
+9. **Glisser-Déposer & Import de Sous-Titres Locaux (.srt / .vtt)** :
+   - **Dépôt direct sur la vidéo** : glissez n'importe quel fichier de sous-titres `.srt` ou `.vtt` sur le lecteur avec zone de dépôt visuelle animée.
+   - **Conversion automatique SubRip -> WebVTT** : parsing et standardisation immédiate côté client sans dépendance.
+   - **Bouton d'importation permanent** : disponible dans le panneau sous-titres même en l'absence de sous-titres distants, avec ajustement du décalage temporel (`+/-0.5s`) et sélection de taille.
+
+10. **Packaging Desktop Natif & Mode Fenêtre Dédié (`npm run desktop`)** :
+   - **Lanceur sans barre d'adresse** : exécute Stremo dans une fenêtre d'application native dédiée avec accélération matérielle GPU activée (`VaapiVideoDecoder`).
+   - Configuration Electron prête à l'emploi (`electron/main.cjs`, `electron/preload.cjs`) et raccourci système `stremo.desktop`.
+
+11. **Tableau de Bord de Statistiques de Visionnage (« Mes Statistiques »)** :
    - **Analyse complète par profil** : calcul en temps réel du temps total passé à regarder des films et séries (heures/minutes), nombre de médias complétés, série la plus dévorée (Top Binge).
    - **Répartition des genres & Trophées** : jauges de progression par genre et badges cinéphiles débloqués (« Grand Spectateur », « Binge Watcher », « Cinéphile Assidu »).
 
-9. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
+12. **Lecteur Vidéo Next-Gen, Proxy Anti-CORS & Saut des Génériques** :
    - **Proxy de Streaming Anti-CORS & HTTP 206 Range** : contournement instantané des restrictions cross-origin des serveurs distants (Torbox, Real-Debrid) avec support des requêtes partielles HTTP 206 Range pour une lecture web ultra-fluide.
    - **Proxy de Sous-titres & Conversion WebVTT à la volée** : standardisation automatique de tous les sous-titres OpenSubtitles (.srt) en format WebVTT (.vtt) avec en-têtes CORS permissifs.
    - **Préférences Linguistiques Intelligentes** : détection de la langue audio du flux (VF, MULTI, VO) et activation automatique de la bonne piste de sous-titres (ex: VOSTFR automatique si film étranger, sous-titres masqués si VF).

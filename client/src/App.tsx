@@ -21,6 +21,7 @@ import type {
   CatalogSection,
   CatalogItem,
   WatchProgress,
+  NextUpItem,
   LibraryItem,
   MetaDetail,
   StreamSource,
@@ -70,6 +71,7 @@ export function App() {
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(false);
   const [catalogsError, setCatalogsError] = useState<string | null>(null);
   const [progressList, setProgressList] = useState<WatchProgress[]>([]);
+  const [nextUpList, setNextUpList] = useState<NextUpItem[]>([]);
   const [libraryList, setLibraryList] = useState<LibraryItem[]>([]);
   const [addonsList, setAddonsList] = useState<AddonInfo[]>([]);
 
@@ -294,12 +296,14 @@ export function App() {
 
   const loadProfileData = async (profileId: string) => {
     try {
-      const [prog, lib] = await Promise.all([
+      const [prog, lib, next] = await Promise.all([
         api.getProgress(profileId),
         api.getLibrary(profileId),
+        api.getNextUp(profileId),
       ]);
       setProgressList(prog);
       setLibraryList(lib);
+      setNextUpList(next);
     } catch (e) {
       console.error('Erreur données profil:', e);
     }
@@ -1008,6 +1012,28 @@ export function App() {
                       onPlay={(it) => handleQuickPlay(it)}
                       onOpenDetails={(it) => handleOpenMedia(it)}
                       onToggleLibrary={(it) => handleToggleLibrary(it)}
+                    />
+                  )}
+
+                  {/* Ligne "À Suivre / Prochains Épisodes" */}
+                  {nextUpList.length > 0 && (
+                    <CatalogRow
+                      title="⚡ À Suivre"
+                      subtitle="Prochains épisodes de vos séries en cours"
+                      items={nextUpList.map((n) => ({
+                        id: n.id,
+                        type: 'series',
+                        name: n.title,
+                        poster: n.poster,
+                        currentTime: n.currentTime,
+                        duration: n.duration,
+                        season: n.season,
+                        episode: n.episode,
+                        isNextEpisode: n.isNextEpisode,
+                        progressPercent: n.progressPercent,
+                      }))}
+                      onSelectItem={(item) => handleOpenMedia(item)}
+                      onQuickPlay={(item) => handleQuickPlay(item)}
                     />
                   )}
 

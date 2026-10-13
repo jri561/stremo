@@ -173,9 +173,16 @@ export const CatalogRow: React.FC<Props> = ({
                     </div>
                   )}
 
+                  {/* Badge À Suivre / Prochain épisode */}
+                  {item.isNextEpisode && (
+                    <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white text-[9px] font-black uppercase tracking-wider backdrop-blur shadow flex items-center gap-1 border border-emerald-400/30 z-10">
+                      <span>À suivre</span>
+                    </div>
+                  )}
+
                   {/* Note IMDb (uniquement si valide) */}
                   {hasValidRating && (
-                    <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-bold text-amber-300 flex items-center gap-1 border border-white/10 shadow">
+                    <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-bold text-amber-300 flex items-center gap-1 border border-white/10 shadow z-10">
                       <Star className="w-2.5 h-2.5 fill-amber-300" />
                       {item.imdbRating}
                     </div>
@@ -214,7 +221,11 @@ export const CatalogRow: React.FC<Props> = ({
                     {item.name}
                   </h4>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    {remainingMin ? (
+                    {item.isNextEpisode ? (
+                      <span className="text-[10px] text-emerald-400 font-medium truncate">
+                        {item.season && item.episode ? `Saison ${item.season} • Ép. ${item.episode}` : 'Prochain épisode'}
+                      </span>
+                    ) : remainingMin ? (
                       <span className="text-[10px] text-indigo-300 font-medium truncate">
                         {item.season && item.episode ? `S${item.season}E${item.episode} • ` : ''}Reste {remainingMin}m
                       </span>

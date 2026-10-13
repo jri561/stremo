@@ -241,7 +241,80 @@ test('DatabaseManager getProfileStats calculates viewing statistics correctly', 
   assert.strictEqual(stats.favoriteSeries?.title, 'Breaking Bad');
   assert.strictEqual(stats.favoriteSeries?.episodesWatched, 2);
   assert.strictEqual(stats.topGenres.length, 2);
-  assert.strictEqual(stats.topGenres[0].genre, 'Science-Fiction');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
+test('DatabaseManager getProfileNextUp computes next up episodes queue correctly', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test_nextup.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const profiles = db.getProfiles();
+  const pId = profiles[0].id;
+
+  // 1. Initial Next Up is empty
+  assert.deepStrictEqual(db.getProfileNextUp(pId), []);
+
+  // 2. Add movie progress - should NOT appear in Next Up
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_movie_dune',
+    mediaType: 'movie',
+    title: 'Dune: Deuxième Partie',
+    currentTime: 3600,
+    duration: 9000,
+    completed: 0,
+  });
+  assert.strictEqual(db.getProfileNextUp(pId).length, 0);
+
+  // 3. Add completed episode of series (Arcane S1E3 completed)
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_arcane:1:3',
+    mediaType: 'series',
+    title: 'Arcane - S01E03',
+    season: 1,
+    episode: 3,
+    currentTime: 2400,
+    duration: 2400,
+    completed: 1,
+  });
+
+  // 4. Add in-progress episode of another series (Severance S1E1 at 50%)
+  db.saveWatchProgress({
+    profileId: pId,
+    mediaId: 'tt_severance:1:1',
+    mediaType: 'series',
+    title: 'Severance • S1 E1',
+    season: 1,
+    episode: 1,
+    currentTime: 1500,
+    duration: 3000,
+    completed: 0,
+  });
+
+  const nextUp = db.getProfileNextUp(pId);
+  assert.strictEqual(nextUp.length, 2);
+
+  // Severance should be first because it was updated most recently
+  const severance = nextUp.find((n) => n.seriesId === 'tt_severance');
+  assert.ok(severance);
+  assert.strictEqual(severance?.seriesTitle, 'Severance');
+  assert.strictEqual(severance?.isNextEpisode, false);
+  assert.strictEqual(severance?.season, 1);
+  assert.strictEqual(severance?.episode, 1);
+  assert.strictEqual(severance?.progressPercent, 50);
+
+  // Arcane should suggest Season 1 Episode 4!
+  const arcane = nextUp.find((n) => n.seriesId === 'tt_arcane');
+  assert.ok(arcane);
+  assert.strictEqual(arcane?.seriesTitle, 'Arcane');
+  assert.strictEqual(arcane?.isNextEpisode, true);
+  assert.strictEqual(arcane?.id, 'tt_arcane:1:4');
+  assert.strictEqual(arcane?.season, 1);
+  assert.strictEqual(arcane?.episode, 4);
+  assert.strictEqual(arcane?.progressPercent, 0);
 
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 });
+

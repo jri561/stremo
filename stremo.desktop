@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Stremo
+GenericName=Cinéma Privé & Streaming
+Comment=Stremo regroupe vos catalogues, favoris, historique familial et lecteurs vidéo en une expérience fluide.
+Exec=npm run desktop
+Icon=multimedia-video-player
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;
+StartupWMClass=stremo
+Keywords=stremio;streaming;movies;series;tv;video;

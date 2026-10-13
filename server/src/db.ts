@@ -40,6 +40,22 @@ export interface WatchProgress {
   updatedAt: string;
 }
 
+export interface NextUpItem {
+  id: string; // Target mediaId (e.g. tt0944947:1:2)
+  seriesId: string; // Parent series ID (e.g. tt0944947)
+  seriesTitle: string; // Nom propre de la série
+  title: string; // Titre affiché, ex: "Arcane • S1 E2"
+  type: 'series';
+  poster?: string;
+  season: number;
+  episode: number;
+  isNextEpisode: boolean; // true si c'est l'épisode suivant, false si reprise en cours
+  currentTime: number;
+  duration: number;
+  progressPercent: number;
+  updatedAt: string;
+}
+
 export interface LibraryItem {
   id: string;
   profileId: string;
@@ -315,6 +331,92 @@ export class DatabaseManager {
 
   deleteWatchProgress(profileId: string, mediaId: string) {
     this.db.prepare('DELETE FROM watch_progress WHERE profileId = ? AND mediaId = ?').run(profileId, mediaId);
+  }
+
+  // --- Rail intelligent "À Suivre" (Next Up Queue) ---
+  getProfileNextUp(profileId: string): NextUpItem[] {
+    const progressItems = this.getWatchProgressList(profileId).filter(
+      (p) => p.mediaType === 'series'
+    );
+
+    // Regrouper par seriesId pour ne garder que la progression la plus récente par série
+    const seriesGroups = new Map<string, WatchProgress>();
+
+    for (const p of progressItems) {
+      const seriesId = p.mediaId.includes(':') ? p.mediaId.split(':')[0] : p.mediaId;
+      if (!seriesGroups.has(seriesId)) {
+        seriesGroups.set(seriesId, p);
+      }
+    }
+
+    const nextUpList: NextUpItem[] = [];
+
+    for (const [seriesId, p] of seriesGroups.entries()) {
+      let season = p.season;
+      let episode = p.episode;
+
+      if ((season == null || episode == null) && p.mediaId.includes(':')) {
+        const parts = p.mediaId.split(':');
+        if (parts.length >= 3) {
+          season = parseInt(parts[1], 10) || 1;
+          episode = parseInt(parts[2], 10) || 1;
+        }
+      }
+
+      const currentSeason = season ?? 1;
+      const currentEpisode = episode ?? 1;
+
+      // Nettoyer le titre pour obtenir le nom de la série seule
+      const cleanSeriesTitle = p.title
+        .replace(/\s*[-•]?\s*s\d+\s*e\d+.*$/i, '')
+        .replace(/\s*[-•]\s*Épisode\s*\d+.*$/i, '')
+        .trim() || p.title;
+
+      const isCompleted = p.completed === 1 || (p.duration > 0 && (p.currentTime / p.duration) >= 0.85);
+
+      if (isCompleted) {
+        // L'épisode précédent est terminé : suggérer l'épisode N+1
+        const nextSeason = currentSeason;
+        const nextEp = currentEpisode + 1;
+        const targetId = `${seriesId}:${nextSeason}:${nextEp}`;
+
+        nextUpList.push({
+          id: targetId,
+          seriesId,
+          seriesTitle: cleanSeriesTitle,
+          title: `${cleanSeriesTitle} • S${nextSeason}E${nextEp}`,
+          type: 'series',
+          poster: p.poster,
+          season: nextSeason,
+          episode: nextEp,
+          isNextEpisode: true,
+          currentTime: 0,
+          duration: 0,
+          progressPercent: 0,
+          updatedAt: p.updatedAt,
+        });
+      } else if (p.currentTime > 10) {
+        // En cours de visionnage : reprendre l'épisode actuel
+        const progressPercent = p.duration > 0 ? (p.currentTime / p.duration) * 100 : 0;
+        nextUpList.push({
+          id: p.mediaId,
+          seriesId,
+          seriesTitle: cleanSeriesTitle,
+          title: `${cleanSeriesTitle} • S${currentSeason}E${currentEpisode}`,
+          type: 'series',
+          poster: p.poster,
+          season: currentSeason,
+          episode: currentEpisode,
+          isNextEpisode: false,
+          currentTime: p.currentTime,
+          duration: p.duration,
+          progressPercent,
+          updatedAt: p.updatedAt,
+        });
+      }
+    }
+
+    return nextUpList;
   }
 
   getProfileStats(profileId: string): ProfileStats {

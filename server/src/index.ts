@@ -94,6 +94,15 @@ app.get('/api/profiles/:id/stats', (req, res) => {
   }
 });
 
+app.get('/api/profiles/:id/next-up', (req, res) => {
+  try {
+    const nextUp = db.getProfileNextUp(req.params.id);
+    res.json({ success: true, nextUp });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- WATCH PROGRESS / REPRISE DE LECTURE ---
 app.get('/api/progress/:profileId', (req, res) => {
   try {

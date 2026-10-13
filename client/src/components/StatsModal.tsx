@@ -75,7 +75,11 @@ export const StatsModal: React.FC<Props> = ({ isOpen, profile, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in"
+    >
       <div className="relative w-full max-w-2xl bg-[#0e1118] border border-white/15 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* EN-TÊTE */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-white/10 bg-[#121622]/60">
