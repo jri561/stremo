@@ -51,6 +51,7 @@ import { rankStreams, detectTvDevice, selectBestStreamForQuickPlay } from './str
 export function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState<boolean>(true);
 
   // Navigation principale : 'home' | 'discover' | 'search' | 'library'
   const [activeNav, setActiveNav] = useState<'home' | 'discover' | 'search' | 'library'>('home');
@@ -275,16 +276,14 @@ export function App() {
   }, [searchQuery, activeProfile]);
 
   const loadProfiles = async () => {
+    setIsLoadingProfiles(true);
     try {
       const list = await api.getProfiles();
       setProfiles(list);
-      if (!activeProfile && list.length > 0) {
-        const saved = localStorage.getItem('stremo_active_profile');
-        const found = list.find((p) => p.id === saved) || list[0];
-        setActiveProfile(found);
-      }
     } catch (e) {
       console.error('Erreur chargement profils:', e);
+    } finally {
+      setIsLoadingProfiles(false);
     }
   };
 
@@ -363,7 +362,14 @@ export function App() {
   };
 
   const handleProfileSwitch = (target: Profile) => {
-    // Protection parentale : quitter un profil Enfant pour un profil Adulte exige un code PIN
+    // Si le profil cible est protégé par son propre code PIN :
+    if (target.pin) {
+      setPinPromptTarget(target);
+      setPinCodeInput('');
+      setPinError(null);
+      return;
+    }
+    // Protection parentale : quitter un profil Enfant pour un profil Adulte exige un code PIN parental
     if (activeProfile?.isKids === 1 && target.isKids === 0) {
       setPinPromptTarget(target);
       setPinCodeInput('');
@@ -383,7 +389,7 @@ export function App() {
       setPinCodeInput('');
       setPinError(null);
     } else {
-      setPinError('Code PIN incorrect (PIN par défaut : 0000)');
+      setPinError(pinPromptTarget.pin ? 'Code PIN incorrect' : 'Code PIN incorrect (PIN par défaut : 0000)');
     }
   };
 
@@ -715,12 +721,77 @@ export function App() {
 
 
 
+  const renderPinModal = () => {
+    if (!pinPromptTarget) return null;
+    return (
+      <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-[#0e121a] border border-white/10 rounded-2xl p-6 max-w-sm w-full space-y-4 text-center shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-lg text-white">
+              {pinPromptTarget.pin ? 'Profil Protégé' : 'Contrôle Parental'}
+            </h3>
+            <p className="text-xs text-slate-300 mt-1">
+              {pinPromptTarget.pin
+                ? <>Le profil « <span className="text-white font-semibold">{pinPromptTarget.name}</span> » est protégé par un code PIN.</>
+                : <>Le profil « <span className="text-white font-semibold">{pinPromptTarget.name}</span> » est réservé aux adultes.</>
+              }
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {pinPromptTarget.pin ? 'Saisissez votre code PIN à 4 chiffres.' : 'Saisissez le code PIN parental (PIN par défaut : 0000).'}
+            </p>
+          </div>
+          <form onSubmit={handleConfirmPin} className="space-y-3">
+            <input
+              type="password"
+              maxLength={8}
+              autoFocus
+              required
+              placeholder="Code PIN..."
+              value={pinCodeInput}
+              onChange={(e) => {
+                setPinCodeInput(e.target.value);
+                setPinError(null);
+              }}
+              className="w-full text-center tracking-widest text-lg font-bold px-4 py-2.5 bg-white/5 border border-white/10 focus:border-indigo-500 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {pinError && (
+              <p className="text-xs text-red-400 font-semibold">{pinError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPinPromptTarget(null);
+                  setPinCodeInput('');
+                  setPinError(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 font-bold text-xs text-slate-300 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-xs text-white shadow-lg transition cursor-pointer"
+              >
+                Déverrouiller
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   if (!activeProfile) {
     return (
       <main className="min-h-screen bg-[#07090e] flex items-center justify-center p-4">
         <ProfileSelector
           profiles={profiles}
           activeProfile={activeProfile}
+          isLoading={isLoadingProfiles}
           onSelectProfile={handleProfileSwitch}
           onCreateProfile={handleCreateProfile}
           onUpdateProfile={handleUpdateProfile}
@@ -729,6 +800,7 @@ export function App() {
           onToggleTvMode={toggleTvMode}
           isTvMode={isTvMode}
         />
+        {renderPinModal()}
         {showDeviceSyncModal && (
           <DeviceSyncModal
             initialPairCode={initialPairCode}
@@ -1377,61 +1449,7 @@ export function App() {
       )}
 
       {/* Modale Contrôle Parental PIN */}
-      {pinPromptTarget && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#0e121a] border border-white/10 rounded-2xl p-6 max-w-sm w-full space-y-4 text-center shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
-              <Lock className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-lg text-white">Contrôle Parental</h3>
-              <p className="text-xs text-slate-300 mt-1">
-                Le profil « <span className="text-white font-semibold">{pinPromptTarget.name}</span> » est réservé aux adultes.
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Saisissez le code PIN parental (PIN par défaut : 0000).
-              </p>
-            </div>
-            <form onSubmit={handleConfirmPin} className="space-y-3">
-              <input
-                type="password"
-                maxLength={8}
-                autoFocus
-                required
-                placeholder="Code PIN..."
-                value={pinCodeInput}
-                onChange={(e) => {
-                  setPinCodeInput(e.target.value);
-                  setPinError(null);
-                }}
-                className="w-full text-center tracking-widest text-lg font-bold px-4 py-2.5 bg-white/5 border border-white/10 focus:border-indigo-500 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              {pinError && (
-                <p className="text-xs text-red-400 font-semibold">{pinError}</p>
-              )}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPinPromptTarget(null);
-                    setPinCodeInput('');
-                    setPinError(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 font-bold text-xs text-slate-300 transition cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-xs text-white shadow-lg transition cursor-pointer"
-                >
-                  Déverrouiller
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {renderPinModal()}
 
       {/* Modale Lecteur Vidéo Intégré */}
       {activePlayerStream && activePlayerStream.url && (

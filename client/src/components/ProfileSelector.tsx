@@ -8,6 +8,7 @@ import { ProfileModal } from './ProfileModal';
 interface Props {
   profiles: Profile[];
   activeProfile: Profile | null;
+  isLoading?: boolean;
   onSelectProfile: (profile: Profile) => void;
   onCreateProfile: (
     name: string,
@@ -41,6 +42,7 @@ interface Props {
 export const ProfileSelector: React.FC<Props> = ({
   profiles,
   activeProfile,
+  isLoading = false,
   onSelectProfile,
   onCreateProfile,
   onUpdateProfile,
@@ -120,8 +122,18 @@ export const ProfileSelector: React.FC<Props> = ({
           : 'Chaque profil dispose de son historique de reprise, favoris et préférences isolés.'}
       </p>
 
-      <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10 max-w-4xl mb-10">
-        {profiles.map((p) => {
+      <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10 max-w-4xl mb-10 min-h-[160px]">
+        {isLoading && profiles.length === 0 ? (
+          <>
+            {[1, 2, 3].map((idx) => (
+              <div key={idx} className="flex flex-col items-center p-3 animate-pulse">
+                <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-white/5 border border-white/10" />
+                <div className="w-20 h-4 bg-white/10 rounded-md mt-3.5" />
+              </div>
+            ))}
+          </>
+        ) : (
+          profiles.map((p) => {
           const isSelected = activeProfile?.id === p.id;
           const theme = getProfileTheme(p.color);
 
@@ -197,7 +209,7 @@ export const ProfileSelector: React.FC<Props> = ({
               </button>
             </div>
           );
-        })}
+        }))}
 
         {!isManaging && (
           <button
