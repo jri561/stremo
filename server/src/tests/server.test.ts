@@ -318,3 +318,38 @@ test('DatabaseManager getProfileNextUp computes next up episodes queue correctly
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 });
 
+test('DatabaseManager cache store and TTL eviction', async () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test-cache.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+
+  // 1. Initial get should return null
+  assert.strictEqual(db.getCache('missing_key'), null);
+
+  // 2. Set cache with TTL 3600 seconds
+  const sampleData = { title: 'Dune: Part Two', score: 8.8, genres: ['Sci-Fi', 'Adventure'] };
+  db.setCache('movie:tt15239678', sampleData, 3600);
+
+  const cached = db.getCache<typeof sampleData>('movie:tt15239678');
+  assert.deepStrictEqual(cached, sampleData);
+
+  // 3. Delete cache
+  db.deleteCache('movie:tt15239678');
+  assert.strictEqual(db.getCache('movie:tt15239678'), null);
+
+  // 4. Expiry / TTL test with negative or zero TTL
+  db.setCache('short_lived', { temp: true }, -1); // already expired
+  assert.strictEqual(db.getCache('short_lived'), null);
+
+  // 5. Purge expired entries
+  db.setCache('expired_1', { a: 1 }, -10);
+  db.setCache('expired_2', { b: 2 }, -5);
+  db.setCache('valid_1', { c: 3 }, 300);
+
+  const purgedCount = db.purgeExpiredCache();
+  assert.strictEqual(purgedCount >= 2, true);
+  assert.deepStrictEqual(db.getCache('valid_1'), { c: 3 });
+
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});

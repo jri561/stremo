@@ -158,16 +158,28 @@ flowchart LR
    - ✅ Interface complète des vidéos téléchargées, forçage d'en-tête HTTP `Content-Disposition`, re-téléchargement et lecture directe hors-ligne (`Alt+D`).
 9. **Tableau de Bord & Statistiques de Visionnage (« Mes Statistiques »)** :
    - ✅ Suivi du temps de visionnage total, compteur de médias terminés, série la plus dévorée (Top Binge), répartition des genres favoris et badges cinéphiles.
-10. **Contrôles Vidéo Étendus** :
+10. **Contrôles Vidéo Étendus & Sleep Timer** :
    - ✅ Sélecteur de vitesse de lecture de 0.5x à 2.0x avec raccourcis clavier `[` et `]`, bascule directe Mode Nuit `D`.
+   - ✅ Minuteur de mise en veille (Sleep Timer) configurable (15m, 30m, 45m, 60m, Fin d'épisode / touche `T`) avec fondu sonore sur les 5 dernières secondes.
+   - ✅ OSD HUD éphémère centré sur les raccourcis de volume, vitesse, seek et mode nuit.
+11. **Glisser-Déposer & Import de Sous-Titres Locaux (.srt / .vtt)** :
+   - ✅ Détection de drag-and-drop sur la vidéo et bouton d'importation dans le menu sous-titres avec conversion WebVTT instantanée.
+12. **Rail Dynamique « ⚡ À Suivre / Prochains Épisodes » (Next Up Queue)** :
+   - ✅ File de lecture intelligente prédisant automatiquement l'épisode suivant (`S{s}E{e+1}`) dès qu'un épisode est vu à plus de 85%, avec badge émeraude et lancement 1-clic.
+13. **Cache Intelligent Multi-Niveaux SQLite (`cache_store`)** :
+   - ✅ Persistance en base SQLite des métadonnées (TTL 24h), catalogues (TTL 15m), flux de streaming (TTL 4m) et sous-titres (TTL 1h) pour une réactivité instantanée et une résilience réseau totale.
+14. **Store d'Add-ons Communautaires Intégré (`AddonManager`)** :
+   - ✅ Catalogue de 13 add-ons vérifiés, navigation par catégories (`Flux & Debrid`, `Catalogues SVOD`, `Sous-titres`, `Animés`, `Médias & Live`), filtrage en temps réel et installation 1-clic.
+15. **Support Avancé Magnet & P2P Torrent (Free Streaming sans Debrid)** :
+   - ✅ Détection des flux `magnet:`, comptage des seeders (`👤 87 seeders`), badge `🧲 P2P Torrent`, bouton « Copier le lien magnet » et routage externe vers VLC / MPV.
+16. **Packaging Desktop Natif & Mode Fenêtre Dédié** :
+   - ✅ Script `npm run desktop` avec accélération GPU Vaapi, raccourci système `stremo.desktop`, et structure Electron (`electron/main.cjs`).
 
-### 📍 Phase 3 : Moteur Torrent Intégré & Packaging Desktop (Long Terme)
-1. **Moteur Torrent WebTorrent / Libtorrent Embarqué** :
-   - Streaming peer-to-peer direct sans passer par un serveur debrid obligatoire, avec pré-chargement séquentiel des morceaux vidéo.
+### 📍 Phase 3 : Streaming Torrent In-Browser & Transcodage Optionnel (Futur)
+1. **Streaming Torrent WebTorrent Embarqué dans le Navigateur** :
+   - Streaming peer-to-peer séquentiel directement sans serveur Debrid pour les contenus libres.
 2. **Transcodage Serveur à la Volée (Optionnel pour NAS)** :
    - Transcodage matériel (NVENC / Intel QuickSync) pour lire des vidéos 4K HEVC ou profils audio non reconnus par les vieux navigateurs.
-3. **Application Desktop Packagée (Electron / Tauri)** :
-   - Fichiers exécutables autonomes `.AppImage`, `.deb`, `.exe`, `.dmg` avec intégration système native (gestion du mode veille, raccourcis médias matériels).
 
 ---
 

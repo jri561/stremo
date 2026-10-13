@@ -25,6 +25,7 @@ import {
   Upload,
   Trash2,
   FileText,
+  Timer,
 } from 'lucide-react';
 import { api, type StreamSource } from '../api';
 import { getAndroidIntentUrl } from '../players';
@@ -218,6 +219,88 @@ export const VideoPlayer: React.FC<Props> = ({
   };
 
   const hideControlsTimer = useRef<any>(null);
+
+  // Minuteur de mise en veille (Sleep Timer) & OSD HUD
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const [sleepRemainingSec, setSleepRemainingSec] = useState<number | null>(null);
+  const [showSleepMenu, setShowSleepMenu] = useState(false);
+  const originalVolumeRef = useRef<number>(1);
+
+  // OSD HUD Overlay (Affichage éphémère d'état à l'écran)
+  const [osdInfo, setOsdInfo] = useState<{ text: string; icon: string; key: number } | null>(null);
+  const osdTimerRef = useRef<any>(null);
+
+  const triggerOSD = (text: string, icon = '✨') => {
+    if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
+    setOsdInfo({ text, icon, key: Date.now() });
+    osdTimerRef.current = setTimeout(() => {
+      setOsdInfo(null);
+    }, 1300);
+  };
+
+  const handleSetSleepTimer = (mins: number | null) => {
+    setSleepTimerMinutes(mins);
+    setShowSleepMenu(false);
+    if (videoRef.current) {
+      originalVolumeRef.current = videoRef.current.volume || 1;
+    }
+    if (mins === null) {
+      setSleepRemainingSec(null);
+      triggerOSD('Minuteur désactivé', '⏱️');
+    } else if (mins === -1) {
+      setSleepRemainingSec(null);
+      triggerOSD('Veille : Fin d’épisode', '⏱️');
+    } else {
+      setSleepRemainingSec(mins * 60);
+      triggerOSD(`Veille : ${mins} min`, '⏱️');
+    }
+  };
+
+  const handleCycleSleepTimer = () => {
+    const cycle: (number | null)[] = [null, 15, 30, 45, 60, -1];
+    const currentIndex = cycle.indexOf(sleepTimerMinutes);
+    const nextIndex = (currentIndex + 1) % cycle.length;
+    handleSetSleepTimer(cycle[nextIndex]);
+  };
+
+  const handleSleepTimerExpire = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.volume = originalVolumeRef.current;
+      setIsPlaying(false);
+    }
+    triggerOSD('Mise en veille effectuée 🌙', '⏱️');
+    setSleepTimerMinutes(null);
+    setSleepRemainingSec(null);
+  };
+
+  // Interval de compte à rebours pour le Sleep Timer
+  useEffect(() => {
+    if (sleepTimerMinutes === null || sleepTimerMinutes <= 0) {
+      setSleepRemainingSec(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSleepRemainingSec((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          handleSleepTimerExpire();
+          return null;
+        }
+
+        // Fondu audio progressif lors des 5 dernières secondes
+        if (prev <= 5 && videoRef.current) {
+          const fadeStep = Math.max(0, (prev - 1) / 5);
+          videoRef.current.volume = originalVolumeRef.current * fadeStep;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sleepTimerMinutes]);
 
   const triggerPlaybackError = (errorMessage: string) => {
     setBuffering(false);
@@ -451,6 +534,11 @@ export const VideoPlayer: React.FC<Props> = ({
       if (nextCountdown === null && autoSkipOutro) {
         setNextCountdown(10);
       }
+    }
+
+    // Détection Sleep Timer : Fin de l'épisode / vidéo
+    if (sleepTimerMinutes === -1 && dur > 0 && curr >= dur - 4) {
+      handleSleepTimerExpire();
     }
   };
 
@@ -735,28 +823,37 @@ export const VideoPlayer: React.FC<Props> = ({
       if (e.key === ' ' || e.key === 'k' || e.key === 'Enter') {
         e.preventDefault();
         togglePlay();
+        triggerOSD(isPlaying ? 'Pause' : 'Lecture', isPlaying ? '⏸️' : '▶️');
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         skip(-10);
+        triggerOSD('-10s', '⏪');
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         skip(10);
+        triggerOSD('+10s', '⏩');
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (videoRef.current) {
-          videoRef.current.volume = Math.min(1, videoRef.current.volume + 0.1);
+          const newVol = Math.min(1, videoRef.current.volume + 0.1);
+          videoRef.current.volume = newVol;
           setIsMuted(false);
+          triggerOSD(`Volume ${Math.round(newVol * 100)}%`, '🔊');
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         if (videoRef.current) {
-          videoRef.current.volume = Math.max(0, videoRef.current.volume - 0.1);
+          const newVol = Math.max(0, videoRef.current.volume - 0.1);
+          videoRef.current.volume = newVol;
+          triggerOSD(`Volume ${Math.round(newVol * 100)}%`, newVol === 0 ? '🔇' : '🔉');
         }
       } else if (e.key === 'm') {
         e.preventDefault();
         if (videoRef.current) {
-          videoRef.current.muted = !videoRef.current.muted;
-          setIsMuted(videoRef.current.muted);
+          const nextMuted = !videoRef.current.muted;
+          videoRef.current.muted = nextMuted;
+          setIsMuted(nextMuted);
+          triggerOSD(nextMuted ? 'Son coupé' : 'Son activé', nextMuted ? '🔇' : '🔊');
         }
       } else if (e.key === 'f') {
         e.preventDefault();
@@ -775,15 +872,21 @@ export const VideoPlayer: React.FC<Props> = ({
         const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
         const nextSpeed = speeds.slice().reverse().find((s) => s < currentSpeed) || 0.5;
         handleSetSpeed(nextSpeed);
+        triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
       } else if (e.key === ']' || e.key === '}') {
         e.preventDefault();
         const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
         const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
         const nextSpeed = speeds.find((s) => s > currentSpeed) || 2;
         handleSetSpeed(nextSpeed);
+        triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
       } else if (e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         toggleNightMode();
+        triggerOSD(!nightMode ? 'Mode Nuit Activé' : 'Mode Standard', '🌙');
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        handleCycleSleepTimer();
       } else if (e.key === 'Escape') {
         if (!document.fullscreenElement) {
           onClose();
@@ -828,6 +931,17 @@ export const VideoPlayer: React.FC<Props> = ({
           />
         ))}
       </video>
+
+      {/* OSD HUD Overlay (On-Screen Display HUD) */}
+      {osdInfo && (
+        <div
+          key={osdInfo.key}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none bg-black/85 backdrop-blur-md px-6 py-3.5 rounded-2xl border border-white/15 text-white font-extrabold text-base md:text-lg flex items-center gap-3 shadow-2xl shadow-black/90 animate-fade-in"
+        >
+          <span className="text-xl md:text-2xl">{osdInfo.icon}</span>
+          <span>{osdInfo.text}</span>
+        </div>
+      )}
 
       {/* Drag & Drop Subtitles Overlay */}
       {isDraggingSub && (
@@ -1147,6 +1261,65 @@ export const VideoPlayer: React.FC<Props> = ({
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 relative">
+              {/* Minuteur de mise en veille (Sleep Timer) */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowSleepMenu(!showSleepMenu);
+                    setShowSpeedMenu(false);
+                    setShowSubMenu(false);
+                    setShowSkipMenu(false);
+                  }}
+                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                    sleepTimerMinutes !== null
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Minuteur de mise en veille (Sleep Timer - Touche T)"
+                >
+                  <Timer className="w-4 h-4" />
+                  {sleepRemainingSec !== null && sleepRemainingSec > 0 ? (
+                    <span className="font-mono text-[11px] text-amber-300 font-bold hidden sm:inline">
+                      {Math.floor(sleepRemainingSec / 60)}:{String(sleepRemainingSec % 60).padStart(2, '0')}
+                    </span>
+                  ) : sleepTimerMinutes === -1 ? (
+                    <span className="text-[10px] text-amber-300 font-bold hidden sm:inline">Fin</span>
+                  ) : null}
+                </button>
+
+                {showSleepMenu && (
+                  <div className="absolute right-0 bottom-full mb-3 w-56 bg-[#111622] border border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 space-y-1">
+                    <div className="px-2.5 py-1 border-b border-white/5 flex items-center justify-between text-[10px] font-black uppercase text-slate-400">
+                      <span>Minuteur de veille</span>
+                      <span className="text-amber-400 font-mono">Touche T</span>
+                    </div>
+                    {[
+                      { label: 'Désactivé', value: null },
+                      { label: '15 minutes', value: 15 },
+                      { label: '30 minutes', value: 30 },
+                      { label: '45 minutes', value: 45 },
+                      { label: '60 minutes', value: 60 },
+                      { label: 'Fin de l’épisode', value: -1 },
+                    ].map((opt) => (
+                      <button
+                        key={String(opt.value)}
+                        onClick={() => handleSetSleepTimer(opt.value)}
+                        className={`w-full p-2 rounded-xl text-left text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
+                          sleepTimerMinutes === opt.value
+                            ? 'bg-amber-500/20 text-amber-300 font-bold'
+                            : 'text-slate-300 hover:bg-white/5'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {sleepTimerMinutes === opt.value && (
+                          <Check className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Playback Speed selector */}
               <div className="relative">
                 <button

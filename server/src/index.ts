@@ -189,7 +189,7 @@ app.get('/api/addons', async (req, res) => {
     const addons = await Promise.all(db.getAddons().map(async (a: any) => {
       let manifest: any = null;
       try {
-        const m = await new AddonClient(a.url).getManifest();
+        const m = await new AddonClient(a.url, db).getManifest();
         manifest = {
           version: m.version, description: m.description, logo: m.logo, types: m.types,
           catalogs: m.catalogs?.length ?? 0,
@@ -208,7 +208,7 @@ app.post('/api/addons', async (req, res) => {
   try {
     const { url } = req.body;
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return res.status(400).json({ error: 'URL http(s) requise' });
-    const client = new AddonClient(url);
+    const client = new AddonClient(url, db);
     const manifest = await client.getManifest();
     db.addAddon(manifest.id, manifest.name, url);
     res.json({ success: true, manifest: { id: manifest.id, name: manifest.name } });
@@ -478,7 +478,7 @@ app.get('/api/catalogs', async (req, res) => {
     if (skip) extra.skip = skip;
 
     const perAddon = await Promise.all(addons.map(async addon => {
-      const client = new AddonClient(addon.url);
+      const client = new AddonClient(addon.url, db);
       try {
         const manifest = await client.getManifest();
         const defs = (manifest.catalogs || []).filter(c => {
@@ -515,7 +515,7 @@ app.get('/api/meta/:type/:id', async (req, res) => {
   const addons = db.getAddons().filter(a => a.enabled);
   for (const addon of addons) {
     try {
-      const meta = await new AddonClient(addon.url).getMeta(type, id);
+      const meta = await new AddonClient(addon.url, db).getMeta(type, id);
       if (meta) return res.json({ success: true, meta: normalizePoster(meta) });
     } catch { /* add-on suivant */ }
   }
@@ -527,7 +527,7 @@ app.get('/api/streams/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   const addons = db.getAddons().filter(a => a.enabled);
   const results = await Promise.allSettled(addons.map(async addon => {
-    const streams = await new AddonClient(addon.url).getStreams(type, id);
+    const streams = await new AddonClient(addon.url, db).getStreams(type, id);
     return streams.map(s => ({
       ...s,
       url: s.url || (s.infoHash ? `magnet:?xt=urn:btih:${s.infoHash}` : undefined),
@@ -542,10 +542,20 @@ app.get('/api/subtitles/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   const addons = db.getAddons().filter(a => a.enabled);
   const results = await Promise.allSettled(addons.map(async addon => {
-    const subs = await new AddonClient(addon.url).getSubtitles(type, id);
+    const subs = await new AddonClient(addon.url, db).getSubtitles(type, id);
     return subs.map(s => ({ ...s, addonName: addon.name }));
   }));
   res.json({ success: true, subtitles: results.flatMap(r => (r.status === 'fulfilled' ? r.value : [])) });
+});
+
+// 3c. Cache maintenance
+app.post('/api/cache/purge', (_req, res) => {
+  try {
+    const purged = db.purgeExpiredCache();
+    res.json({ success: true, purgedEntries: purged });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // 4. Lancement direct dans le lecteur local (VLC / MPV / Système par défaut sur Linux Desktop)

@@ -246,5 +246,27 @@ test('selectBestStreamForQuickPlay choisit le flux optimal selon la langue et la
   assert.equal(selectBestStreamForQuickPlay([{ name: 'sans url' } as any]), null);
 });
 
+test('parseStream détecte les liens Magnet P2P et extrait les seeders', async () => {
+  const { parseStream, getPlayerRecommendation } = await import('./streams.ts');
+
+  const magnetStream = {
+    addonName: 'Torrentio',
+    name: 'Torrentio 1080p',
+    description: '👤 87 💾 4.2 GB ⚙️ 1337x\nMovie.2024.1080p.WEBRip.x264',
+    url: 'magnet:?xt=urn:btih:d2b3c4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3&dn=Movie.2024',
+  };
+
+  const parsed = parseStream(magnetStream);
+  assert.strictEqual(parsed.isMagnet, true);
+  assert.strictEqual(parsed.infoHash?.toLowerCase(), 'd2b3c4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3');
+  assert.strictEqual(parsed.seeders, 87);
+  assert.strictEqual(parsed.webReady, false);
+
+  const rec = getPlayerRecommendation(parsed);
+  assert.strictEqual(rec.isWebOk, false);
+  assert.ok(rec.label.includes('87 seeders'));
+  assert.ok(rec.label.includes('VLC'));
+});
+
 
 

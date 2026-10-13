@@ -21,7 +21,11 @@ export interface ParsedStream {
   group?: string;
   indexer?: string;
   fileName?: string;
-  /** Lisible nativement par un navigateur (pas de mkv/HEVC signalé « notWebReady »). */
+  /** Flux Torrent P2P / Magnet direct (sans serveur debrid). */
+  isMagnet: boolean;
+  infoHash?: string;
+  seeders?: number;
+  /** Lisible nativement par un navigateur (pas de mkv/HEVC signalé « notWebReady » ni de magnet P2P direct). */
   webReady: boolean;
 }
 
@@ -112,6 +116,24 @@ export function parseStream(stream: StreamSource): ParsedStream {
   let size = hints.videoSize ? { bytes: Number(hints.videoSize), label: formatBytes(Number(hints.videoSize)) } : null;
   if (!size) size = parseSizeLabel(sections['📦'] ?? sections['💾'] ?? rawDesc);
 
+  // Détection Magnet & P2P Torrent direct (sans serveur debrid)
+  const isMagnet = !!stream.url?.startsWith('magnet:') || !!stream.infoHash;
+  let infoHash = stream.infoHash;
+  if (!infoHash && stream.url?.startsWith('magnet:')) {
+    const hashMatch = stream.url.match(/urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})/i);
+    if (hashMatch) infoHash = hashMatch[1];
+  }
+
+  // Détection des Seeders / Pairs (P2P)
+  let seeders: number | undefined;
+  const seederStr = sections['👤'] || '';
+  const seederMatch = seederStr.match(/\d+/) || haystack.match(/(?:👤|seeders?|seeds?)\s*[:=]?\s*(\d+)/i) || haystack.match(/\[(\d+)\s*(?:S|seeders?)\]/i);
+  if (seederMatch) {
+    seeders = parseInt(seederMatch[1] || seederMatch[0], 10);
+  }
+
+  const isWebCandidate = !isMagnet && hints.notWebReady !== true && !/truehd|dts-hd|\bdts\b|\bremux\b/i.test(`${rawName} ${rawDesc} ${fileName ?? ''}`);
+
   return {
     stream,
     height,
@@ -129,7 +151,10 @@ export function parseStream(stream: StreamSource): ParsedStream {
     group: sections['🏷'] || undefined,
     indexer: sections['🔍'] || undefined,
     fileName,
-    webReady: hints.notWebReady !== true && !/truehd|dts-hd|\bdts\b|\bremux\b/i.test(`${rawName} ${rawDesc} ${fileName ?? ''}`),
+    isMagnet,
+    infoHash,
+    seeders,
+    webReady: isWebCandidate,
   };
 }
 
@@ -139,6 +164,15 @@ export function getPlayerRecommendation(p: ParsedStream): {
   label: string;
   badgeClass: string;
 } {
+  if (p.isMagnet && !p.debrid) {
+    const seederText = p.seeders !== undefined ? ` (${p.seeders} seeders)` : '';
+    return {
+      isWebOk: false,
+      label: `Torrent P2P${seederText} • VLC ou client torrent conseillé`,
+      badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    };
+  }
+
   if (p.webReady && p.height <= 1080) {
     return {
       isWebOk: true,

@@ -17,6 +17,7 @@ import {
   Search,
   Zap,
   Download,
+  Copy,
 } from 'lucide-react';
 import type { MetaDetail, StreamSource, CastMember, TrailerItem, WatchProgress } from '../api';
 import { AVAILABLE_PLAYERS, getAndroidIntentUrl, type PlayerChoice } from '../players';
@@ -62,6 +63,18 @@ export const MediaModal: React.FC<Props> = ({
   const [resolutionFilter, setResolutionFilter] = useState<ResolutionFilter>('all');
   const [onlyDebridCached, setOnlyDebridCached] = useState(false);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
+  const [copiedMagnetUrl, setCopiedMagnetUrl] = useState<string | null>(null);
+
+  const handleCopyMagnet = (e: React.MouseEvent, magnetUrl: string) => {
+    e.stopPropagation();
+    try {
+      navigator.clipboard.writeText(magnetUrl);
+      setCopiedMagnetUrl(magnetUrl);
+      setTimeout(() => setCopiedMagnetUrl(null), 2500);
+    } catch (err) {
+      console.warn('Impossible de copier le lien magnet', err);
+    }
+  };
 
   const handleDownloadStream = (e: React.MouseEvent, p: ParsedStream) => {
     e.stopPropagation();
@@ -208,6 +221,20 @@ export const MediaModal: React.FC<Props> = ({
     }
     if (selectedPlayer === 'mxplayer') {
       window.location.href = getAndroidIntentUrl(stream.url, 'com.mxtech.videoplayer.ad');
+      return;
+    }
+
+    if (stream.url.startsWith('magnet:') && selectedPlayer === 'web') {
+      const wantVlc = window.confirm(
+        "Ce flux est un lien Magnet Torrent P2P. Les navigateurs web ne peuvent pas lire les torrents en direct sans compte Debrid.\n\nSouhaitez-vous le lancer dans VLC / lecteur externe ?"
+      );
+      if (wantVlc) {
+        onPlayStream(stream, 'vlc');
+      } else {
+        navigator.clipboard.writeText(stream.url);
+        setDownloadToast("Lien Magnet copié dans le presse-papier 🧲");
+        setTimeout(() => setDownloadToast(null), 3000);
+      }
       return;
     }
 
@@ -575,11 +602,15 @@ export const MediaModal: React.FC<Props> = ({
                             </span>
 
                             {/* Debrid et cache */}
-                            {parsed.debrid && (
+                            {parsed.debrid ? (
                               <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
                                 {parsed.cached ? '⚡' : ''} {parsed.debrid}
                               </span>
-                            )}
+                            ) : parsed.isMagnet ? (
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                                🧲 P2P Torrent {parsed.seeders !== undefined ? `• ${parsed.seeders} seeders` : ''}
+                              </span>
+                            ) : null}
 
                             {/* HDR / Dolby Vision */}
                             {parsed.hdr.map((h, hIdx) => (
@@ -629,7 +660,20 @@ export const MediaModal: React.FC<Props> = ({
 
                         {/* Boutons d'action */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {parsed.stream.url && (
+                          {parsed.isMagnet && parsed.stream.url && (
+                            <button
+                              onClick={(e) => handleCopyMagnet(e, parsed.stream.url!)}
+                              className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-white/10 transition cursor-pointer"
+                              title="Copier le lien magnet P2P"
+                            >
+                              {copiedMagnetUrl === parsed.stream.url ? (
+                                <Check className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+                          {parsed.stream.url && !parsed.isMagnet && (
                             <button
                               onClick={(e) => handleDownloadStream(e, parsed)}
                               className="p-2 rounded-xl bg-white/5 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 border border-white/10 transition cursor-pointer"

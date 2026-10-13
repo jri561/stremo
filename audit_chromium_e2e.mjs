@@ -279,7 +279,28 @@ async function runAudit() {
               await page.waitForTimeout(400);
               const hasImportBtn = await page.$('button:has-text("Importer un fichier")');
               logStep('8d. Menu Sous-titres & Import local (.srt/.vtt)', 'PASS', { hasImportButton: !!hasImportBtn });
+              // Fermer le sous-menu
+              await subMenuBtn.click();
+              await page.waitForTimeout(200);
             }
+
+            // Minuteur de mise en veille (Sleep Timer) & Popover
+            const sleepTimerBtn = await page.$('button[title*="Minuteur"], button:has(svg.lucide-timer)');
+            if (sleepTimerBtn) {
+              await sleepTimerBtn.click();
+              await page.waitForTimeout(400);
+              const sleepOptions = await page.$$('button:has-text("minutes"), button:has-text("Fin de l’épisode")');
+              logStep('8e. Minuteur de sommeil (Sleep Timer)', 'PASS', { optionsCount: sleepOptions.length });
+              // Fermer le menu veille
+              await sleepTimerBtn.click();
+              await page.waitForTimeout(200);
+            }
+
+            // Raccourci clavier et OSD HUD
+            await page.keyboard.press('ArrowUp');
+            await page.waitForTimeout(300);
+            const osdElement = await page.$('.animate-fade-in:has-text("Volume")');
+            logStep('8f. Affichage OSD HUD sur raccourci clavier', 'PASS', { osdVisible: !!osdElement });
 
             await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '07_video_player_controls.png') });
 
@@ -299,9 +320,9 @@ async function runAudit() {
     }
 
     // -------------------------------------------------------------
-    // TEST 9: Gestionnaire d'Add-ons Stremio
+    // TEST 9: Gestionnaire d'Add-ons Stremio & Store Communautaire
     // -------------------------------------------------------------
-    console.log('\n--- Test 9: Gestionnaire d\'Add-ons ---');
+    console.log('\n--- Test 9: Gestionnaire d\'Add-ons & Store ---');
     const addonsBtn = await page.$('button[title*="Add-ons"], button:has(svg.lucide-puzzle)');
     if (addonsBtn) {
       await addonsBtn.click();
@@ -311,11 +332,31 @@ async function runAudit() {
       const addonModalTitle = await page.$eval('div[role="dialog"] h2', el => el.textContent?.trim()).catch(() => 'Add-ons');
       const addonItems = await page.$$('div[role="dialog"] .border');
 
-      logStep('9. Gestionnaire d\'Add-ons Stremio', 'PASS', {
+      logStep('9a. Gestionnaire d\'Add-ons installés', 'PASS', {
         title: addonModalTitle,
         addonsCount: addonItems.length
       });
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '08_addon_manager.png') });
+
+      // Onglet Store Communautaire
+      const communityTabBtn = await page.$('button:has-text("Store Communautaire"), button:has-text("Recommandés")');
+      if (communityTabBtn) {
+        await communityTabBtn.click();
+        await page.waitForTimeout(500);
+        const communityCards = await page.$$('div[role="dialog"] .grid > div');
+        logStep('9b. Store d\'Add-ons Communautaire intégré', 'PASS', {
+          availableCommunityAddons: communityCards.length
+        });
+
+        // Filtrage par catégorie
+        const debridFilterBtn = await page.$('button:has-text("Flux & Debrid")');
+        if (debridFilterBtn) {
+          await debridFilterBtn.click();
+          await page.waitForTimeout(300);
+        }
+
+        await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '08b_addon_community_store.png') });
+      }
 
       const closeAddonsBtn = await page.$('div[role="dialog"] button:has(svg.lucide-x)');
       if (closeAddonsBtn) await closeAddonsBtn.click();

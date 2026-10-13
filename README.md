@@ -115,11 +115,31 @@ Plateforme de streaming moderne et immersive inspirée de **Nuvio** et **Stremio
    - Exportation instantanée au format JSON ou copie dans le presse-papier.
    - Restauration multi-écrans avec modes **Fusion intelligente** (ajoute sans écraser) ou **Remplacement intégral**.
 
-11. **Application PWA & Gestionnaire d'Add-ons Sécurisé** :
+11. **Cache Intelligent Multi-Niveaux & Mode Dégradé Hors-Ligne** :
+   - **Persistance SQLite intégrée (`cache_store`)** : mise en cache automatique des requêtes add-ons Stremio pour une réactivité instantanée et une résilience réseau maximale (Métadonnées 24h, Catalogues 15m, Flux 4m, Sous-titres 1h).
+   - **Endpoint de maintenance (`POST /api/cache/purge`)** : purge automatique des entrées expirées sans blocage I/O.
+
+12. **Store d'Add-ons Communautaires Intégré (1-Clic)** :
+   - **Catalogue vérifié de 13 add-ons de référence** : Torrentio, CyberFlix, OpenSubtitles v3, SubDL, Anime Kisa, Kitsu, TMDB, WatchHub, Twitch TV, YouTube Channels, Stremio Podcasts, Public Domain Movies, Anime Catalogs.
+   - **Filtres par catégories thématiques** : `Tous`, `⚡ Flux & Debrid`, `📚 Catalogues SVOD`, `💬 Sous-titres`, `🎌 Animés`, `📺 Médias & Live`.
+   - **Recherche en temps réel** : filtrage instantané par mots-clés, langues (VOSTFR, VF), debrid, genres.
+   - **Copie d'URL de manifest & installation 1-clic** avec indicateur d'état immédiat (« Déjà installé »).
+
+13. **Support Avancé Magnet & P2P Torrent (Streaming Gratuit sans Debrid)** :
+   - **Détection automatique des liens Magnet et hashes infoHash** : extraction du nombre de seeders/pairs (`👤 87 seeders`).
+   - **Badges dédiés `🧲 P2P Torrent`** et conseils d'utilisation personnalisés.
+   - **Bouton 1-clic « Copier le lien magnet »** avec retour visuel immédiat.
+   - **Routage intelligent vers VLC / MPV / Lecteur externe** avec invite interactive si tenté depuis un navigateur web standard.
+
+14. **Minuteur de Sommeil (Sleep Timer) & OSD HUD Centré** :
+   - **Minuteur de mise en veille paramétrable** : 15 min, 30 min, 45 min, 60 min, ou « Fin de l'épisode / du film » (raccourci clavier `T`).
+   - **Fondu audio progressif (Audio Fade-out)** sur les 5 dernières secondes avant l'arrêt pour un endormissement sans coupure brutale.
+   - **OSD HUD (On-Screen Display)** : badge éphémère haute élégance au centre de l'écran affichant en temps réel les changements de volume, vitesse, décalage temporel (`+10s`/`-10s`), mode nuit et état du minuteur.
+
+15. **Application PWA & Sécurité Renforcée** :
    - Web App Manifest complet avec icônes adaptatives, affichage `standalone` et installation en 1 clic.
    - **Protection des jetons secrets** : masquage systématique des tokens Debrid et AIOStreams dans l'interface et l'API.
    - **Statut de Compte Debrid** : vérification et affichage en temps réel des jours restants d'abonnement Real-Debrid / Torbox (`/api/debrid/status`).
-   - Installation en un clic des add-ons recommandés (Torrentio, CyberFlix, Anime Kisa, OpenSubtitles v3).
 
 ---
 

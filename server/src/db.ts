@@ -187,6 +187,13 @@ export class DatabaseManager {
         data TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS cache_store (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        expiresAt INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache_store(expiresAt);
     `);
 
     // Migrations idempotentes pour bases SQLite existantes
@@ -744,5 +751,46 @@ export class DatabaseManager {
       data: parsedData,
       updatedAt: row.updatedAt,
     };
+  }
+
+  // --- Cache Store Haute Performance ---
+  getCache<T = any>(key: string): T | null {
+    const row = this.db.prepare(`
+      SELECT value, expiresAt FROM cache_store WHERE key = ?
+    `).get(key) as unknown as { value: string; expiresAt: number } | undefined;
+
+    if (!row) return null;
+    if (Date.now() > row.expiresAt) {
+      this.deleteCache(key);
+      return null;
+    }
+
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  setCache(key: string, value: any, ttlSeconds: number): void {
+    const expiresAt = Date.now() + (ttlSeconds * 1000);
+    const jsonStr = JSON.stringify(value);
+    this.db.prepare(`
+      INSERT INTO cache_store (key, value, expiresAt)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        expiresAt = excluded.expiresAt
+    `).run(key, jsonStr, expiresAt);
+  }
+
+  deleteCache(key: string): void {
+    this.db.prepare('DELETE FROM cache_store WHERE key = ?').run(key);
+  }
+
+  purgeExpiredCache(): number {
+    const now = Date.now();
+    const result = this.db.prepare('DELETE FROM cache_store WHERE expiresAt < ?').run(now);
+    return Number((result as any)?.changes || 0);
   }
 }
