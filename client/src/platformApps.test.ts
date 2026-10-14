@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const rootDir = fs.existsSync(path.resolve(process.cwd(), 'stremo.desktop'))
   ? process.cwd()
@@ -68,3 +69,37 @@ test('Linux Desktop: Entrée .desktop et scripts de packaging fonctionnels', () 
   assert.ok(fs.existsSync(packageScript), 'scripts/package-linux.sh doit exister');
   assert.ok(fs.existsSync(launcherBin), 'bin/stremo doit exister');
 });
+
+test('Packaging final: scripts npm build:apk et build:desktop configurés et livrables valides', () => {
+  const rootPkgPath = path.resolve(rootDir, 'package.json');
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+
+  assert.ok(rootPkg.scripts['build:apk'], 'Script build:apk requis');
+  assert.ok(rootPkg.scripts['build:desktop'], 'Script build:desktop requis');
+
+  // Livrable Linux
+  const linuxDistArchive = path.resolve(rootDir, 'dist-linux/stremo-linux-x64-v1.0.0.tar.gz');
+  const linuxChecksum = path.resolve(rootDir, 'dist-linux/stremo-linux-x64-v1.0.0.tar.gz.sha256');
+  if (!fs.existsSync(linuxDistArchive)) {
+    execSync('npm run build:desktop', { cwd: rootDir, stdio: 'pipe' });
+  }
+  assert.ok(fs.existsSync(linuxDistArchive), 'stremo-linux-x64-v1.0.0.tar.gz doit exister');
+  assert.ok(fs.existsSync(linuxChecksum), 'Checksum SHA-256 Linux doit exister');
+  assert.ok(fs.statSync(linuxDistArchive).size > 100000, 'L\'archive Linux doit contenir les binaires');
+
+  // Livrable Android / Android TV APK
+  const apkUniversal = path.resolve(rootDir, 'dist-android/stremo-v1.0.0-universal.apk');
+  const apkTv = path.resolve(rootDir, 'dist-android/stremo-android-tv-v1.0.0.apk');
+  const apkRelease = path.resolve(rootDir, 'android/app/build/outputs/apk/release/app-release.apk');
+  const apkChecksum = path.resolve(rootDir, 'dist-android/stremo-v1.0.0-universal.apk.sha256');
+  if (!fs.existsSync(apkUniversal)) {
+    execSync('npm run build:apk', { cwd: rootDir, stdio: 'pipe' });
+  }
+
+  assert.ok(fs.existsSync(apkUniversal), 'stremo-v1.0.0-universal.apk doit exister');
+  assert.ok(fs.existsSync(apkTv), 'stremo-android-tv-v1.0.0.apk doit exister');
+  assert.ok(fs.existsSync(apkRelease), 'app-release.apk doit exister');
+  assert.ok(fs.existsSync(apkChecksum), 'Checksum SHA-256 APK doit exister');
+  assert.ok(fs.statSync(apkUniversal).size > 100000, 'L\'APK doit contenir les assets et manifestes');
+});
+

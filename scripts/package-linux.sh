@@ -38,5 +38,9 @@ cp "$PROJECT_DIR/README.md" "$TARGET_DIR/"
 # 4. Création de l'archive tar.gz
 cd "$DIST_DIR"
 tar -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
+sha256sum "${PACKAGE_NAME}.tar.gz" > "${PACKAGE_NAME}.tar.gz.sha256"
 
-echo "✅ Paquet Linux généré avec succès : $DIST_DIR/${PACKAGE_NAME}.tar.gz"
+SIZE_MB=$(du -m "${PACKAGE_NAME}.tar.gz" | cut -f1)
+echo "✅ Paquet Linux généré avec succès ($SIZE_MB Mo) : $DIST_DIR/${PACKAGE_NAME}.tar.gz"
+echo "   • Checksum : $DIST_DIR/${PACKAGE_NAME}.tar.gz.sha256"
+

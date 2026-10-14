@@ -277,9 +277,17 @@ Stremo dispose d'une configuration clé en main pour chaque écran. Consultez le
   - PWA installable avec icônes maskables et raccourcis.
   - Double-tap rapide tactile (±10s) dans le lecteur vidéo.
   - Configuration Capacitor native dans [capacitor.config.json](file:///home/toto/Documents/stremo/capacitor.config.json) et TWA dans [android/twa-manifest.json](file:///home/toto/Documents/stremo/android/twa-manifest.json).
+- **📦 Commandes de Packaging Natif Clé en Main** :
+  ```bash
+  # Génère l'APK universel signé pour Smartphone Android & Android TV (avec somme SHA-256)
+  npm run build:apk
+
+  # Génère l'archive portable autonome pour environnement Linux x86_64
+  npm run build:desktop
+  ```
 - **🐧 Linux (Bureau & Salon)** :
   - Installation en une commande : `./scripts/install-linux.sh`.
   - Exécutable binaire : `stremo` ou `./bin/stremo`.
-  - Packaging d'archive portable : `./scripts/package-linux.sh`.
   - Intégration de bureau XDG : [stremo.desktop](file:///home/toto/Documents/stremo/stremo.desktop).
+
 

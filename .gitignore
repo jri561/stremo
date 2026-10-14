@@ -11,6 +11,10 @@ dist/
 dist-ssr/
 client/dist/
 server/dist/
+dist-linux/
+dist-android/
+android/app/build/
+android/.gradle/
 
 # Données locales et bases de données personnelles
 server/data/*.db

@@ -18,19 +18,31 @@ Stremo intègre un manifeste PWA complet ([manifest.webmanifest](file:///home/to
 ## 2. 📱 Android (Smartphones & Tablettes)
 
 ### Options de déploiement :
-- **Option 1 : Installation PWA directe (Recommandée)** :
+- **Option 1 : Packaging APK Universel en 1 commande (Recommandée)** :
+  ```bash
+  # Génère l'APK universel signé pour Smartphone Android & Android TV
+  npm run build:apk
+  ```
+  Livrables générés :
+  - `dist-android/stremo-v1.0.0-universal.apk` (Smartphone + Android TV)
+  - `dist-android/stremo-android-tv-v1.0.0.apk`
+  - `dist-android/stremo-v1.0.0-universal.apk.sha256`
+  - `android/app/build/outputs/apk/release/app-release.apk`
+
+- **Option 2 : Installation PWA directe** :
   - Rendez-vous sur votre instance Stremo depuis Google Chrome sur Android.
   - Touchez le bandeau « Ajouter Stremo à l'écran d'accueil ».
   - L'application s'intègre en plein écran comme une application Android native.
-- **Option 2 : Génération d'APK natif via Capacitor** :
+
+- **Option 3 : Génération d'APK natif via Capacitor** :
   ```bash
-  # Dans le dossier racine du projet :
   npm run build
   npx cap add android
   npx cap copy
   npx cap open android
   ```
-- **Option 3 : Génération TWA (Trusted Web Activity) pour le Google Play Store** :
+
+- **Option 4 : Génération TWA (Trusted Web Activity) pour le Google Play Store** :
   - Utilise la configuration prête à l'emploi dans [android/twa-manifest.json](file:///home/toto/Documents/stremo/android/twa-manifest.json).
   ```bash
   npx @bubblewrap/cli build
@@ -87,8 +99,12 @@ Ce script :
 - Depuis le menu des applications de votre environnement de bureau (icône **Stremo**).
 - En ligne de commande : `stremo`.
 
-### Génération de l'archive portable de distribution :
+### Génération du paquet de distribution Linux :
 ```bash
-./scripts/package-linux.sh
+npm run build:desktop
+# ou alternativement : ./scripts/package-linux.sh
 ```
-Génère l'archive `dist-linux/stremo-linux-x64-v1.0.0.tar.gz` prête à être distribuée sur toute distribution Linux x86_64.
+Génère :
+- `dist-linux/stremo-linux-x64-v1.0.0.tar.gz` prête à être distribuée sur toute distribution Linux x86_64.
+- `dist-linux/stremo-linux-x64-v1.0.0.tar.gz.sha256` (empreinte d'intégrité).
+

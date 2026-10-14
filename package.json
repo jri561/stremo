@@ -10,7 +10,9 @@
     "test:browser": "node scripts/test-browser.mjs",
     "test:e2e": "node audit_chromium_e2e.mjs",
     "desktop": "node scripts/launch-desktop.mjs",
-    "desktop:electron": "electron electron/main.cjs"
+    "desktop:electron": "electron electron/main.cjs",
+    "build:apk": "python3 scripts/package-apk.py",
+    "build:desktop": "bash scripts/package-linux.sh"
   },
   "devDependencies": {
     "playwright-core": "^1.64.0"
