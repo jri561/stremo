@@ -908,6 +908,30 @@ app.post('/api/play-external', (req, res) => {
   }
 });
 
+// 4b. Flux de test multimédia locaux (audio AC3/AAC, vidéo H.264 et sous-titres WebVTT)
+app.get('/api/test-media/sample.mkv', (req, res) => {
+  const file = path.resolve(__dirname, '../../data/sample_test.mkv');
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'Fichier introuvable' });
+  res.sendFile(file);
+});
+
+app.get('/api/test-media/sample.mp4', (req, res) => {
+  const file = path.resolve(__dirname, '../../data/sample_test.mp4');
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'Fichier introuvable' });
+  res.sendFile(file);
+});
+
+app.get('/api/test-media/sample.vtt', (req, res) => {
+  res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+  res.send(`WEBVTT
+
+00:00:00.500 --> 00:00:04.000
+Bienvenue dans le lecteur Stremo !
+
+00:00:04.500 --> 00:00:09.500
+Test audio et sous-titres synchronisés.`);
+});
+
 // 5. Servir le frontend compilé (production unifiée)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

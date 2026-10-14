@@ -558,6 +558,18 @@ export function App() {
     setActivePlayerStream(offlineStream);
   };
 
+  useEffect(() => {
+    const handleTestPlay = (e: any) => {
+      if (e.detail?.stream) {
+        setSelectedItem(e.detail.item || { id: 'test_sample', name: 'Test Audio & Vidéo', type: 'movie' });
+        if (e.detail.subtitles) setSubtitles(e.detail.subtitles);
+        setActivePlayerStream(e.detail.stream);
+      }
+    };
+    window.addEventListener('stremo-test-play', handleTestPlay);
+    return () => window.removeEventListener('stremo-test-play', handleTestPlay);
+  }, []);
+
   const handleQuickPlay = async (item: CatalogItem, specificVideoId?: string) => {
     let targetId = item.id;
     let targetVideoId = specificVideoId;
