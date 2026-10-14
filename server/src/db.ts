@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomInt } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
-import { hashPassword, verifyPassword, generateSessionToken } from './accountAuth.js';
+import { hashPassword, verifyPassword, hashPasswordSync, verifyPasswordSync, generateSessionToken } from './accountAuth.js';
 
 export interface Profile {
   id: string;
@@ -277,6 +277,27 @@ export class DatabaseManager {
     try { this.db.exec("ALTER TABLE addons ADD COLUMN accountId TEXT DEFAULT NULL"); } catch (_) {}
     try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_profiles_account ON profiles(accountId)"); } catch (_) {}
     try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_addons_account ON addons(accountId)"); } catch (_) {}
+    try {
+      const schemaSql = (this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='addons'").get() as any)?.sql || '';
+      if (schemaSql.includes('url TEXT NOT NULL UNIQUE')) {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS addons_v2 (
+            id TEXT NOT NULL,
+            accountId TEXT,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            orderIndex INTEGER DEFAULT 0
+          );
+          INSERT INTO addons_v2 (id, accountId, name, url, enabled, orderIndex)
+          SELECT id, accountId, name, url, enabled, orderIndex FROM addons;
+          DROP TABLE addons;
+          ALTER TABLE addons_v2 RENAME TO addons;
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_addons_acc_id ON addons(coalesce(accountId, '__guest__'), id);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_addons_acc_url ON addons(coalesce(accountId, '__guest__'), url);
+        `);
+      }
+    } catch (_) {}
     try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN audioTrack TEXT DEFAULT NULL"); } catch (_) {}
     try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN subtitleTrack TEXT DEFAULT NULL"); } catch (_) {}
     try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN subtitleDelay REAL DEFAULT 0"); } catch (_) {}
@@ -658,10 +679,20 @@ export class DatabaseManager {
 
   addAddon(id: string, name: string, url: string, accountId?: string | null) {
     const safeAccountId = accountId || null;
-    this.db.prepare(`
-      INSERT OR REPLACE INTO addons (id, accountId, name, url, enabled, orderIndex)
-      VALUES (?, ?, ?, ?, 1, (SELECT coalesce(max(orderIndex) + 1, 0) FROM addons WHERE (accountId = ? OR (? IS NULL AND accountId IS NULL))))
-    `).run(id, safeAccountId, name, url, safeAccountId, safeAccountId);
+    const existing = this.db.prepare(
+      'SELECT rowid FROM addons WHERE (accountId = ? OR (? IS NULL AND accountId IS NULL)) AND (id = ? OR url = ?)'
+    ).get(safeAccountId, safeAccountId, id, url) as any;
+
+    if (existing) {
+      this.db.prepare(
+        'UPDATE addons SET id = ?, name = ?, url = ?, enabled = 1 WHERE rowid = ?'
+      ).run(id, name, url, existing.rowid);
+    } else {
+      this.db.prepare(`
+        INSERT INTO addons (id, accountId, name, url, enabled, orderIndex)
+        VALUES (?, ?, ?, ?, 1, (SELECT coalesce(max(orderIndex) + 1, 0) FROM addons WHERE (accountId = ? OR (? IS NULL AND accountId IS NULL))))
+      `).run(id, safeAccountId, name, url, safeAccountId, safeAccountId);
+    }
   }
 
   removeAddon(id: string, accountId?: string | null) {
@@ -714,11 +745,18 @@ export class DatabaseManager {
 
   importData(
     data: { profiles?: Profile[]; addons?: AddonConfig[]; library?: LibraryItem[]; progress?: WatchProgress[] },
-    overwrite = false
+    overwrite = false,
+    accountId?: string | null
   ): { success: boolean; importedProfiles: number; importedAddons: number; importedLibrary: number; importedProgress: number } {
+    const callerAccountId = accountId || null;
     if (overwrite) {
-      this.db.prepare('DELETE FROM library').run();
-      this.db.prepare('DELETE FROM watch_progress').run();
+      const callerProfiles = this.getProfiles(callerAccountId);
+      const pIds = callerProfiles.map((p) => p.id);
+      if (pIds.length > 0) {
+        const ph = pIds.map(() => '?').join(',');
+        this.db.prepare(`DELETE FROM library WHERE profileId IN (${ph})`).run(...pIds);
+        this.db.prepare(`DELETE FROM watch_progress WHERE profileId IN (${ph})`).run(...pIds);
+      }
     }
 
     let importedProfiles = 0;
@@ -739,7 +777,8 @@ export class DatabaseManager {
             p.preferredAudioLanguage || 'fra',
             p.preferredSubtitleLanguage || 'fra',
             p.subtitleMode || 'foreign_only',
-            p.color || 'indigo'
+            p.color || 'indigo',
+            callerAccountId
           );
         } else {
           this.updateProfile(p.id, {
@@ -760,7 +799,7 @@ export class DatabaseManager {
     if (Array.isArray(data.addons)) {
       for (const a of data.addons) {
         if (!a.id || !a.url) continue;
-        this.addAddon(a.id, a.name, a.url);
+        this.addAddon(a.id, a.name, a.url, callerAccountId);
         importedAddons++;
       }
     }
@@ -972,19 +1011,24 @@ export class DatabaseManager {
     this.db.prepare('DELETE FROM bookmarks WHERE id = ?').run(id);
   }
 
+  getBookmarkById(id: string): BookmarkItem | null {
+    const row = this.db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(id);
+    return (row as unknown as BookmarkItem) || null;
+  }
+
   // --- Gestion des Comptes et Synchronisation Multi-Écrans ---
-  createAccount(
+  async createAccount(
     username: string,
     password: string,
     email?: string,
     deviceName: string = 'Stremo Web'
-  ): { account: AccountSummary; token: string; expiresAt: number } {
+  ): Promise<{ account: AccountSummary; token: string; expiresAt: number }> {
     const cleanUsername = username ? username.trim() : '';
     if (!cleanUsername || cleanUsername.length < 3) {
       throw new Error('Le nom d\'utilisateur doit contenir au moins 3 caractères.');
     }
-    if (!password || password.length < 6) {
-      throw new Error('Le mot de passe doit contenir au moins 6 caractères.');
+    if (!password || password.length < 6 || password.length > 256) {
+      throw new Error('Le mot de passe doit contenir au moins 6 caractères (et maximum 256).');
     }
 
     const cleanEmail = email ? email.trim() : null;
@@ -993,7 +1037,7 @@ export class DatabaseManager {
       throw new Error('Un compte avec ce nom d\'utilisateur existe déjà.');
     }
 
-    const { hash, salt } = hashPassword(password);
+    const { hash, salt } = await hashPassword(password);
     const accountId = 'acc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const createdAt = new Date().toISOString();
 
@@ -1020,7 +1064,51 @@ export class DatabaseManager {
     };
   }
 
-  verifyAccount(username: string, password: string): Account | null {
+  createAccountSync(
+    username: string,
+    password: string,
+    email?: string,
+    deviceName: string = 'Stremo Web'
+  ): { account: AccountSummary; token: string; expiresAt: number } {
+    const cleanUsername = username ? username.trim() : '';
+    if (!cleanUsername || cleanUsername.length < 3) {
+      throw new Error('Le nom d\'utilisateur doit contenir au moins 3 caractères.');
+    }
+    if (!password || password.length < 6 || password.length > 256) {
+      throw new Error('Le mot de passe doit contenir entre 6 et 256 caractères.');
+    }
+
+    const cleanEmail = email ? email.trim() : null;
+    const existing = this.db.prepare('SELECT id FROM accounts WHERE LOWER(username) = LOWER(?)').get(cleanUsername);
+    if (existing) {
+      throw new Error('Un compte avec ce nom d\'utilisateur existe déjà.');
+    }
+
+    const { hash, salt } = hashPasswordSync(password);
+    const accountId = 'acc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const createdAt = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO accounts (id, username, email, passwordHash, salt, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(accountId, cleanUsername, cleanEmail, hash, salt, createdAt);
+
+    this.createProfile(cleanUsername, 'film', 0, undefined, 'fra', 'fra', 'foreign_only', 'indigo', accountId);
+    const session = this.createAccountSession(accountId, deviceName);
+
+    return {
+      account: {
+        id: accountId,
+        username: cleanUsername,
+        email: cleanEmail || undefined,
+        createdAt,
+      },
+      token: session.token,
+      expiresAt: session.expiresAt,
+    };
+  }
+
+  async verifyAccount(username: string, password: string): Promise<Account | null> {
     if (!username || !password) return null;
     const clean = username.trim();
     const row = this.db.prepare(`
@@ -1028,7 +1116,20 @@ export class DatabaseManager {
     `).get(clean, clean) as unknown as Account | undefined;
 
     if (!row) return null;
-    const isValid = verifyPassword(password, row.passwordHash, row.salt);
+    const isValid = await verifyPassword(password, row.passwordHash, row.salt);
+    if (!isValid) return null;
+    return row;
+  }
+
+  verifyAccountSync(username: string, password: string): Account | null {
+    if (!username || !password) return null;
+    const clean = username.trim();
+    const row = this.db.prepare(`
+      SELECT * FROM accounts WHERE LOWER(username) = LOWER(?) OR (email IS NOT NULL AND LOWER(email) = LOWER(?))
+    `).get(clean, clean) as unknown as Account | undefined;
+
+    if (!row) return null;
+    const isValid = verifyPasswordSync(password, row.passwordHash, row.salt);
     if (!isValid) return null;
     return row;
   }

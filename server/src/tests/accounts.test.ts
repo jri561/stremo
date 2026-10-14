@@ -4,23 +4,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseManager } from '../db.js';
 
-test('DatabaseManager Multi-Accounts: registration, authentication and session tokens', () => {
+test('DatabaseManager Multi-Accounts: registration, authentication and session tokens', async () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test_accounts.db');
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 
   const db = new DatabaseManager(testDbPath);
 
   // 1. Validation des paramètres invalides
-  assert.throws(() => {
-    db.createAccount('ab', 'secret123'); // Trop court
+  await assert.rejects(async () => {
+    await db.createAccount('ab', 'secret123'); // Trop court
   }, /au moins 3 caractères/);
 
-  assert.throws(() => {
-    db.createAccount('jean_dupont', '123'); // Trop court
+  await assert.rejects(async () => {
+    await db.createAccount('jean_dupont', '123'); // Trop court
   }, /au moins 6 caractères/);
 
   // 2. Création réussie d'un compte
-  const registered = db.createAccount('alice', 'superpassword123', 'alice@stremo.app', 'Firefox Linux');
+  const registered = await db.createAccount('alice', 'superpassword123', 'alice@stremo.app', 'Firefox Linux');
   assert.ok(registered.account.id.startsWith('acc_'));
   assert.strictEqual(registered.account.username, 'alice');
   assert.strictEqual(registered.account.email, 'alice@stremo.app');
@@ -29,23 +29,23 @@ test('DatabaseManager Multi-Accounts: registration, authentication and session t
   assert.ok(registered.expiresAt > Date.now() + 80 * 24 * 3600 * 1000); // Au moins 80 jours restants
 
   // 3. Unicité du nom d'utilisateur (insensible à la casse)
-  assert.throws(() => {
-    db.createAccount('Alice', 'different_password');
+  await assert.rejects(async () => {
+    await db.createAccount('Alice', 'different_password');
   }, /existe déjà/);
 
   // 4. Vérification d'authentification
-  const validByUsername = db.verifyAccount('alice', 'superpassword123');
+  const validByUsername = await db.verifyAccount('alice', 'superpassword123');
   assert.ok(validByUsername);
   assert.strictEqual(validByUsername?.username, 'alice');
 
-  const validByEmail = db.verifyAccount('alice@stremo.app', 'superpassword123');
+  const validByEmail = await db.verifyAccount('alice@stremo.app', 'superpassword123');
   assert.ok(validByEmail);
   assert.strictEqual(validByEmail?.id, registered.account.id);
 
-  const invalidPass = db.verifyAccount('alice', 'wrong_password');
+  const invalidPass = await db.verifyAccount('alice', 'wrong_password');
   assert.strictEqual(invalidPass, null);
 
-  const unknownUser = db.verifyAccount('bob_inexistant', 'superpassword123');
+  const unknownUser = await db.verifyAccount('bob_inexistant', 'superpassword123');
   assert.strictEqual(unknownUser, null);
 
   // 5. Validation de la session
@@ -67,7 +67,7 @@ test('DatabaseManager Multi-Accounts: registration, authentication and session t
   assert.strictEqual(db.getAccountSessions(registered.account.id).length, 1);
 });
 
-test('DatabaseManager Multi-Accounts: data isolation between accounts and local mode', () => {
+test('DatabaseManager Multi-Accounts: data isolation between accounts and local mode', async () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test_accounts_iso.db');
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 
@@ -80,7 +80,7 @@ test('DatabaseManager Multi-Accounts: data isolation between accounts and local 
   assert.strictEqual(localAddons.length, 2);
 
   // Compte 1 : Thomas
-  const acc1 = db.createAccount('thomas', 'pwdThomas123');
+  const acc1 = await db.createAccount('thomas', 'pwdThomas123');
   const acc1Profiles = db.getProfiles(acc1.account.id);
   // Doit avoir son profil initial créé automatiquement
   assert.strictEqual(acc1Profiles.length, 1);
@@ -91,7 +91,7 @@ test('DatabaseManager Multi-Accounts: data isolation between accounts and local 
   assert.strictEqual(db.getProfiles(acc1.account.id).length, 2);
 
   // Compte 2 : Marie
-  const acc2 = db.createAccount('marie', 'pwdMarie123');
+  const acc2 = await db.createAccount('marie', 'pwdMarie123');
   const acc2Profiles = db.getProfiles(acc2.account.id);
   assert.strictEqual(acc2Profiles.length, 1);
   assert.strictEqual(acc2Profiles[0].name, 'marie');
@@ -125,7 +125,7 @@ test('DatabaseManager Multi-Accounts: data isolation between accounts and local 
   assert.strictEqual(exportAcc2.progress.length, 0);
 });
 
-test('DatabaseManager Multi-Accounts: claiming local guest data into account', () => {
+test('DatabaseManager Multi-Accounts: claiming local guest data into account', async () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test_accounts_claim.db');
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 
@@ -135,7 +135,7 @@ test('DatabaseManager Multi-Accounts: claiming local guest data into account', (
   assert.strictEqual(db.getProfiles().length, 3);
 
   // L'utilisateur décide de se créer un compte
-  const account = db.createAccount('claire', 'motdepasse123');
+  const account = await db.createAccount('claire', 'motdepasse123');
   // Claire a maintenant 1 profil propre + 3 profils locaux toujours en suspens
   assert.strictEqual(db.getProfiles(account.account.id).length, 1);
   assert.strictEqual(db.getProfiles().length, 3);
@@ -150,12 +150,12 @@ test('DatabaseManager Multi-Accounts: claiming local guest data into account', (
   assert.strictEqual(db.getProfiles().length, 0);
 });
 
-test('DatabaseManager Multi-Accounts: cross-device sync synchronization payload', () => {
+test('DatabaseManager Multi-Accounts: cross-device sync synchronization payload', async () => {
   const testDbPath = path.join(process.cwd(), 'data', 'test_accounts_sync.db');
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 
   const db = new DatabaseManager(testDbPath);
-  const user = db.createAccount('david', 'motdepassedavid');
+  const user = await db.createAccount('david', 'motdepassedavid');
   const profileId = db.getProfiles(user.account.id)[0].id;
 
   // Progression initiale sur le serveur

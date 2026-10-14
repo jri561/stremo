@@ -268,6 +268,29 @@ def build_apk():
     os.makedirs(DIST_ANDROID, exist_ok=True)
     os.makedirs(RELEASE_OUTPUT, exist_ok=True)
 
+    target_apk = os.path.join(DIST_ANDROID, "stremo-v1.0.0-universal.apk")
+    target_tv_apk = os.path.join(DIST_ANDROID, "stremo-android-tv-v1.0.0.apk")
+    app_release_apk = os.path.join(RELEASE_OUTPUT, "app-release.apk")
+
+    # Détection Gradle natif si JDK et wrapper présents
+    gradlew_path = os.path.join(ANDROID_DIR, "gradlew")
+    if os.path.exists(gradlew_path) and shutil.which("java"):
+        print("🐘 Détection de Java JDK : compilation native via Gradle...")
+        try:
+            subprocess.check_call([gradlew_path, "assembleRelease"], cwd=ANDROID_DIR)
+            gradle_built = os.path.join(RELEASE_OUTPUT, "app-release.apk")
+            if os.path.exists(gradle_built):
+                shutil.copyfile(gradle_built, target_apk)
+                shutil.copyfile(gradle_built, target_tv_apk)
+                with open(target_apk, "rb") as f:
+                    apk_hash = hashlib.sha256(f.read()).hexdigest()
+                with open(f"{target_apk}.sha256", "w") as f:
+                    f.write(f"{apk_hash}  stremo-v1.0.0-universal.apk\n")
+                print(f"✅ APK natif compilé avec succès via Gradle : {target_apk}")
+                return
+        except Exception as e:
+            print(f"⚠️ Gradle non abouti ({e}), repli sur le packager autonome signé.")
+
     import io
     unsigned_buf = io.BytesIO()
     with zipfile.ZipFile(unsigned_buf, "w", compression=zipfile.ZIP_DEFLATED) as apk_zip:
@@ -302,11 +325,6 @@ def build_apk():
     print("✍️ Signature cryptographique v1 (RSA-2048 / SHA-256)...")
     signed_apk_bytes = sign_apk_v1(unsigned_buf.getvalue())
 
-    # Sorties cibles
-    target_apk = os.path.join(DIST_ANDROID, "stremo-v1.0.0-universal.apk")
-    target_tv_apk = os.path.join(DIST_ANDROID, "stremo-android-tv-v1.0.0.apk")
-    app_release_apk = os.path.join(RELEASE_OUTPUT, "app-release.apk")
-
     with open(target_apk, "wb") as f:
         f.write(signed_apk_bytes)
     shutil.copyfile(target_apk, target_tv_apk)
@@ -323,6 +341,7 @@ def build_apk():
     print(f"   • Android TV Leanback    : {target_tv_apk}")
     print(f"   • Gradle release target   : {app_release_apk}")
     print(f"   • SHA-256 : {apk_hash}")
+
 
 if __name__ == "__main__":
     build_apk()

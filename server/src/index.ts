@@ -300,6 +300,15 @@ app.post('/api/bookmarks', (req, res) => {
 
 app.delete('/api/bookmarks/:id', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    const bookmark = db.getBookmarkById(req.params.id);
+    if (!bookmark) {
+      return res.status(404).json({ success: false, error: 'Signet introuvable' });
+    }
+    const profile = db.getProfile(bookmark.profileId);
+    if (!profile || (accountId && profile.accountId !== accountId) || (!accountId && profile.accountId !== null)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce signet' });
+    }
     db.deleteBookmark(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
@@ -448,12 +457,13 @@ app.get('/api/backup/export', (req, res) => {
 
 app.post('/api/backup/import', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const backup = req.body.backup || req.body;
     if (!backup || typeof backup !== 'object') {
       return res.status(400).json({ success: false, error: 'Données de sauvegarde invalides' });
     }
     const overwrite = req.body.overwrite === true;
-    const result = db.importData(backup, overwrite);
+    const result = db.importData(backup, overwrite, accountId);
     res.json({ success: true, result });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -491,28 +501,28 @@ function checkAuthRateLimit(req: express.Request, res: express.Response, maxAtte
 }
 
 // --- COMPTES UTILISATEUR & SYNCHRONISATION MULTI-ÉCRANS ---
-app.post('/api/accounts/register', (req, res) => {
+app.post('/api/accounts/register', async (req, res) => {
   try {
     if (!checkAuthRateLimit(req, res)) return;
     const { username, password, email, deviceName } = req.body;
     if (!username || !password) {
       return res.status(400).json({ success: false, error: 'Nom d\'utilisateur et mot de passe requis' });
     }
-    const result = db.createAccount(username, password, email, deviceName);
+    const result = await db.createAccount(username, password, email, deviceName);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-app.post('/api/accounts/login', (req, res) => {
+app.post('/api/accounts/login', async (req, res) => {
   try {
     if (!checkAuthRateLimit(req, res)) return;
     const { username, password, deviceName } = req.body;
     if (!username || !password) {
       return res.status(400).json({ success: false, error: 'Identifiants requis' });
     }
-    const account = db.verifyAccount(username, password);
+    const account = await db.verifyAccount(username, password);
     if (!account) {
       return res.status(401).json({ success: false, error: 'Nom d\'utilisateur ou mot de passe incorrect' });
     }

@@ -23,6 +23,7 @@ server/data/*.db-wal
 server/data/*.db-shm
 data/*.db
 data/*.db-journal
+data/torrents/
 
 # Variables d'environnement & secrets
 .env

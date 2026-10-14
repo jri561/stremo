@@ -204,7 +204,8 @@ export class TranscodeEngine {
     const mode: TranscodeMode = req.query.mode === 'full' ? 'full' : 'audio';
     const startTime = Number(req.query.startTime ?? 0);
     const audioTrackIndex = req.query.audioTrack !== undefined ? Number(req.query.audioTrack) : undefined;
-    const audioLang = typeof req.query.audioLang === 'string' ? req.query.audioLang : undefined;
+    const rawLang = req.query.audioLang;
+    const audioLang = typeof rawLang === 'string' && /^[a-zA-Z0-9_-]{1,10}$/.test(rawLang) ? rawLang : undefined;
 
     if (!Number.isFinite(startTime) || startTime < 0) {
       res.status(400).json({ success: false, error: 'startTime invalide' });
@@ -240,7 +241,13 @@ export class TranscodeEngine {
     });
     proc.on('close', (code, signal) => {
       this.jobs.delete(proc);
-      if (code && signal !== 'SIGKILL') console.warn('[FFmpeg] arrêt code', code, stderr.trim());
+      if (code && signal !== 'SIGKILL') {
+        console.warn('[FFmpeg] arrêt code', code, stderr.trim());
+        if (!res.headersSent) {
+          res.status(502).json({ success: false, error: 'Échec de conversion du flux vidéo par FFmpeg' });
+          return;
+        }
+      }
       if (!res.writableEnded) res.end();
     });
 

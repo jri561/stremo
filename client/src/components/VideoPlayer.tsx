@@ -926,6 +926,21 @@ export const VideoPlayer: React.FC<Props> = ({
 
     return () => {
       if (hls) hls.destroy();
+      if (video) {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      sourceNodeRef.current = null;
+      compressorRef.current = null;
+      if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+      if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
       transcodeClockRef.current?.dispose();
       transcodeClockRef.current = null;
     };
@@ -1357,95 +1372,97 @@ export const VideoPlayer: React.FC<Props> = ({
     }, 3500);
   };
 
-  // Keyboard navigation shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' || e.key === 'k' || e.key === 'Enter') {
-        e.preventDefault();
-        togglePlay();
-        triggerOSD(isPlaying ? 'Pause' : 'Lecture', isPlaying ? '⏸️' : '▶️');
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        skip(-10);
-        triggerOSD('-10s', '⏪');
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        skip(10);
-        triggerOSD('+10s', '⏩');
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (videoRef.current) {
-          const newVol = Math.min(1, videoRef.current.volume + 0.1);
-          videoRef.current.volume = newVol;
-          setIsMuted(false);
-          triggerOSD(`Volume ${Math.round(newVol * 100)}%`, '🔊');
-        }
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (videoRef.current) {
-          const newVol = Math.max(0, videoRef.current.volume - 0.1);
-          videoRef.current.volume = newVol;
-          triggerOSD(`Volume ${Math.round(newVol * 100)}%`, newVol === 0 ? '🔇' : '🔉');
-        }
-      } else if (e.key === 'm') {
-        e.preventDefault();
-        if (videoRef.current) {
-          const nextMuted = !videoRef.current.muted;
-          videoRef.current.muted = nextMuted;
-          setIsMuted(nextMuted);
-          triggerOSD(nextMuted ? 'Son coupé' : 'Son activé', nextMuted ? '🔇' : '🔊');
-        }
-      } else if (e.key === 'f') {
-        e.preventDefault();
-        toggleFullscreen();
-      } else if (e.key === 'n' || e.key === 'N') {
-        if (nextEpisode && onPlayNextEpisode) {
-          e.preventDefault();
-          handleSkipToNextEpisode();
-        }
-      } else if (e.key === 's' || e.key === 'S' || e.key === 'i' || e.key === 'I') {
-        e.preventDefault();
-        handleSkipIntro();
-      } else if (e.key === '[' || e.key === '{') {
-        e.preventDefault();
-        const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
-        const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
-        const nextSpeed = speeds.slice().reverse().find((s) => s < currentSpeed) || 0.5;
-        handleSetSpeed(nextSpeed);
-        triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
-      } else if (e.key === ']' || e.key === '}') {
-        e.preventDefault();
-        const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
-        const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
-        const nextSpeed = speeds.find((s) => s > currentSpeed) || 2;
-        handleSetSpeed(nextSpeed);
-        triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
-      } else if (e.key === 'd' || e.key === 'D') {
-        e.preventDefault();
-        toggleNightMode();
-        triggerOSD(!nightMode ? 'Mode Nuit Activé' : 'Mode Standard', '🌙');
-      } else if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        handleCycleSleepTimer();
-      } else if (e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        handleCycleAspectRatio();
-      } else if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        handleAddBookmark();
-      } else if (e.key === 'u' || e.key === 'U') {
-        e.preventDefault();
-        handleToggleAudioTranscode();
-      } else if (e.key === 'Escape') {
-        if (!document.fullscreenElement) {
-          onClose();
-        }
+  const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  handleKeyDownRef.current = (e: KeyboardEvent) => {
+    if (e.key === ' ' || e.key === 'k' || e.key === 'Enter') {
+      e.preventDefault();
+      togglePlay();
+      triggerOSD(isPlaying ? 'Pause' : 'Lecture', isPlaying ? '⏸️' : '▶️');
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      skip(-10);
+      triggerOSD('-10s', '⏪');
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      skip(10);
+      triggerOSD('+10s', '⏩');
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (videoRef.current) {
+        const newVol = Math.min(1, videoRef.current.volume + 0.1);
+        videoRef.current.volume = newVol;
+        setIsMuted(false);
+        triggerOSD(`Volume ${Math.round(newVol * 100)}%`, '🔊');
       }
-    };
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (videoRef.current) {
+        const newVol = Math.max(0, videoRef.current.volume - 0.1);
+        videoRef.current.volume = newVol;
+        triggerOSD(`Volume ${Math.round(newVol * 100)}%`, newVol === 0 ? '🔇' : '🔉');
+      }
+    } else if (e.key === 'm') {
+      e.preventDefault();
+      if (videoRef.current) {
+        const nextMuted = !videoRef.current.muted;
+        videoRef.current.muted = nextMuted;
+        setIsMuted(nextMuted);
+        triggerOSD(nextMuted ? 'Son coupé' : 'Son activé', nextMuted ? '🔇' : '🔊');
+      }
+    } else if (e.key === 'f') {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if (e.key === 'n' || e.key === 'N') {
+      if (nextEpisode && onPlayNextEpisode) {
+        e.preventDefault();
+        handleSkipToNextEpisode();
+      }
+    } else if (e.key === 's' || e.key === 'S' || e.key === 'i' || e.key === 'I') {
+      e.preventDefault();
+      handleSkipIntro();
+    } else if (e.key === '[' || e.key === '{') {
+      e.preventDefault();
+      const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+      const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
+      const nextSpeed = speeds.slice().reverse().find((s) => s < currentSpeed) || 0.5;
+      handleSetSpeed(nextSpeed);
+      triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
+    } else if (e.key === ']' || e.key === '}') {
+      e.preventDefault();
+      const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+      const currentSpeed = videoRef.current ? videoRef.current.playbackRate : playbackRate;
+      const nextSpeed = speeds.find((s) => s > currentSpeed) || 2;
+      handleSetSpeed(nextSpeed);
+      triggerOSD(`Vitesse ${nextSpeed}x`, '⚡');
+    } else if (e.key === 'd' || e.key === 'D') {
+      e.preventDefault();
+      toggleNightMode();
+      triggerOSD(!nightMode ? 'Mode Nuit Activé' : 'Mode Standard', '🌙');
+    } else if (e.key === 't' || e.key === 'T') {
+      e.preventDefault();
+      handleCycleSleepTimer();
+    } else if (e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      handleCycleAspectRatio();
+    } else if (e.key === 'b' || e.key === 'B') {
+      e.preventDefault();
+      handleAddBookmark();
+    } else if (e.key === 'u' || e.key === 'U') {
+      e.preventDefault();
+      handleToggleAudioTranscode();
+    } else if (e.key === 'Escape') {
+      if (!document.fullscreenElement) {
+        onClose();
+      }
+    }
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, duration, aspectRatio, bookmarks, profileId, mediaId, currentTime]);
+  // Enregistrement unique de l'écouteur clavier global
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => handleKeyDownRef.current(e);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, []);
 
   return (
     <div

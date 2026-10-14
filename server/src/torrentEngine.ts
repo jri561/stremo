@@ -121,7 +121,7 @@ export class TorrentEngine {
   /** `clientOptions` permet d'isoler le réseau (ex. tests locaux sans DHT). */
   constructor(clientOptions: Record<string, unknown> = {}) {
     this.clientOptions = { maxConns: 65, tracker: true, dht: true, ...clientOptions };
-    this.cacheDir = path.join(os.tmpdir(), 'stremo_torrents');
+    this.cacheDir = process.env.STREMO_TORRENT_DIR || path.join(process.cwd(), 'data', 'torrents');
     try {
       fs.mkdirSync(this.cacheDir, { recursive: true });
     } catch (err) {

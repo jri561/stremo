@@ -9,9 +9,20 @@ import { spawn, execSync } from 'node:child_process';
 import http from 'node:http';
 import os from 'node:os';
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_DIR = path.resolve(__dirname, '..');
+
 const CLIENT_PORT = 5173;
 const SERVER_PORT = 3001;
-const APP_URL = `http://localhost:${CLIENT_PORT}`;
+
+const hasBuiltDist = fs.existsSync(path.join(PROJECT_DIR, 'client', 'dist', 'index.html'));
+const TARGET_PORT = hasBuiltDist ? SERVER_PORT : CLIENT_PORT;
+const APP_URL = `http://localhost:${TARGET_PORT}`;
 
 function checkPort(port) {
   return new Promise((resolve) => {
@@ -81,25 +92,27 @@ function findBrowserBinary() {
 }
 
 async function main() {
-  console.log('🎬 Démarrage de Stremo en mode Application Desktop...');
+  console.log(`🎬 Démarrage de Stremo en mode Application Desktop (${hasBuiltDist ? 'Production intégrée' : 'Développement'})...`);
 
   const serverReady = await checkPort(SERVER_PORT);
-  const clientReady = await checkPort(CLIENT_PORT);
 
   if (!serverReady) {
     console.log('⚡ Démarrage du serveur backend (Express)...');
     spawn('npm', ['run', 'start', '--prefix', 'server'], { stdio: 'inherit', shell: true });
   }
 
-  if (!clientReady) {
-    console.log('⚡ Démarrage du client web (Vite)...');
-    spawn('npm', ['run', 'dev', '--prefix', 'client'], { stdio: 'inherit', shell: true });
+  if (!hasBuiltDist) {
+    const clientReady = await checkPort(CLIENT_PORT);
+    if (!clientReady) {
+      console.log('⚡ Démarrage du client web (Vite)...');
+      spawn('npm', ['run', 'dev', '--prefix', 'client'], { stdio: 'inherit', shell: true });
+    }
   }
 
-  // Attendre 1.5s que les serveurs soient prêts
+  // Attendre que le port cible soit prêt
   let attempts = 0;
-  while (attempts < 15) {
-    const ready = await checkPort(CLIENT_PORT);
+  while (attempts < 20) {
+    const ready = await checkPort(TARGET_PORT);
     if (ready) break;
     await new Promise((r) => setTimeout(r, 400));
     attempts++;

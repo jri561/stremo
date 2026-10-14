@@ -2,20 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hashPassword, verifyPassword, generateSessionToken } from '../accountAuth.js';
 
-test('accountAuth: hashPassword et verifyPassword valident les mots de passe légitimes', () => {
+test('accountAuth: hashPassword et verifyPassword valident les mots de passe légitimes', async () => {
   const password = 'MonMotDePasseSecret123!';
-  const { hash, salt } = hashPassword(password);
+  const { hash, salt } = await hashPassword(password);
 
   assert.ok(hash.length > 32);
   assert.strictEqual(salt.length, 32); // 16 bytes en hex = 32 chars
 
-  // Vérification réussie
-  assert.strictEqual(verifyPassword(password, hash, salt), true);
+  // Vérification réussie (async & sync)
+  assert.strictEqual(await verifyPassword(password, hash, salt), true);
 
   // Vérification échouée sur mot de passe incorrect
-  assert.strictEqual(verifyPassword('MauvaisMotDePasse', hash, salt), false);
-  assert.strictEqual(verifyPassword('', hash, salt), false);
-  assert.strictEqual(verifyPassword(password, hash, 'mauvais_sel'), false);
+  assert.strictEqual(await verifyPassword('MauvaisMotDePasse', hash, salt), false);
+  assert.strictEqual(await verifyPassword('', hash, salt), false);
+  assert.strictEqual(await verifyPassword(password, hash, 'mauvais_sel'), false);
 });
 
 test('accountAuth: generateSessionToken génère des jetons aléatoires uniques et sécurisés', () => {
