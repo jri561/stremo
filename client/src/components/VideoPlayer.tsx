@@ -85,11 +85,31 @@ interface Props {
   mediaInfo?: TraktMediaInfo;
   availableStreams?: StreamSource[];
   isSeries?: boolean;
-  onProgress?: (currentTime: number, duration: number) => void;
+  onProgress?: (
+    currentTime: number,
+    duration: number,
+    prefs?: {
+      audioTrack?: string;
+      subtitleTrack?: string;
+      subtitleDelay?: number;
+      playbackSpeed?: number;
+    }
+  ) => void;
   onClose: () => void;
   onLaunchVLC?: () => void;
   onPlayNextEpisode?: () => void;
   onSelectStream?: (stream: StreamSource) => void;
+}
+
+function formatTime(sec: number): string {
+  if (isNaN(sec)) return '00:00';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) {
+    return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+  return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
 export const VideoPlayer: React.FC<Props> = ({
@@ -112,6 +132,16 @@ export const VideoPlayer: React.FC<Props> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    time: number;
+    mode: 'brightness' | 'volume' | 'none';
+    initialBrightness: number;
+    initialVolume: number;
+    hasMoved: boolean;
+  } | null>(null);
+  const justSwipedRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -466,6 +496,45 @@ export const VideoPlayer: React.FC<Props> = ({
   const [preferTranscodeAudio, setPreferTranscodeAudio] = useState<boolean>(() => {
     return localStorage.getItem('stremo_prefer_transcode_audio') === 'true';
   });
+
+  // Restauration des préférences de lecture (audio, sous-titres, vitesse, reprise de position)
+  useEffect(() => {
+    if (!profileId || !mediaId) return;
+    api.getMediaProgress(profileId, mediaId)
+      .then((prog) => {
+        if (!prog) return;
+        // 1. Reprise de position de lecture si initialTime n'a pas été explicitement fourni
+        if (initialTime === 0 && prog.currentTime > 5 && (!prog.duration || prog.currentTime < prog.duration - 15)) {
+          if (videoRef.current && videoRef.current.currentTime < 5) {
+            videoRef.current.currentTime = prog.currentTime;
+            setCurrentTime(prog.currentTime);
+            triggerOSD(`Reprise à ${formatTime(prog.currentTime)}`, '⏱️');
+          }
+        }
+        // 2. Restauration de la piste audio
+        if (prog.audioTrack !== undefined && prog.audioTrack !== null && prog.audioTrack !== '') {
+          const trIndex = Number(prog.audioTrack);
+          if (!isNaN(trIndex) && trIndex >= 0) {
+            setSelectedAudioTrackIndex(trIndex);
+          }
+        }
+        // 3. Restauration des sous-titres et décalage
+        if (prog.subtitleTrack) {
+          setSelectedSub(prog.subtitleTrack);
+        }
+        if (prog.subtitleDelay !== undefined && typeof prog.subtitleDelay === 'number') {
+          setSubDelay(prog.subtitleDelay);
+        }
+        // 4. Restauration de la vitesse de lecture
+        if (prog.playbackSpeed !== undefined && typeof prog.playbackSpeed === 'number' && prog.playbackSpeed > 0) {
+          setPlaybackRate(prog.playbackSpeed);
+          if (videoRef.current) {
+            videoRef.current.playbackRate = prog.playbackSpeed;
+          }
+        }
+      })
+      .catch((err) => console.warn('Erreur chargement progression média:', err));
+  }, [profileId, mediaId, initialTime]);
 
   // Menu d'options supplémentaires sur petits écrans (Mobile)
   const [showMoreMobileMenu, setShowMoreMobileMenu] = useState<boolean>(false);
@@ -872,7 +941,12 @@ export const VideoPlayer: React.FC<Props> = ({
       setDuration(dur);
     }
     if (onProgress && Math.floor(curr) % 5 === 0) {
-      onProgress(curr, dur);
+      onProgress(curr, dur, {
+        audioTrack: isTranscodingAudio ? String(selectedAudioTrackIndex) : undefined,
+        subtitleTrack: selectedSub || undefined,
+        subtitleDelay: subDelay,
+        playbackSpeed: playbackRate,
+      });
     }
 
     // Saut d'intro automatique intelligent (AniSkip ou durée adaptée Anime/Sitcom/Série)
@@ -1120,8 +1194,20 @@ export const VideoPlayer: React.FC<Props> = ({
   useEffect(() => {
     return () => {
       triggerTraktScrobble('stop', true);
+      if (onProgress && videoRef.current) {
+        const c = videoRef.current.currentTime || 0;
+        const d = videoRef.current.duration || duration || 0;
+        if (c > 0) {
+          onProgress(c, d, {
+            audioTrack: isTranscodingAudio ? String(selectedAudioTrackIndex) : undefined,
+            subtitleTrack: selectedSub || undefined,
+            subtitleDelay: subDelay,
+            playbackSpeed: playbackRate,
+          });
+        }
+      }
     };
-  }, []);
+  }, [selectedSub, subDelay, playbackRate, isTranscodingAudio, selectedAudioTrackIndex, duration]);
 
   const togglePiP = async () => {
     try {
@@ -1137,6 +1223,10 @@ export const VideoPlayer: React.FC<Props> = ({
   };
 
   const togglePlay = () => {
+    if (justSwipedRef.current) {
+      justSwipedRef.current = false;
+      return;
+    }
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
@@ -1160,8 +1250,66 @@ export const VideoPlayer: React.FC<Props> = ({
     videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + seconds));
   };
 
-  // Double-tap tactile mobile (avance/recul rapide fluide)
+  // Gestes tactiles mobiles : Glissement vertical (Luminosité à gauche, Volume à droite) et Double-tap (±10s)
+  const handleVideoTouchStart = (e: React.TouchEvent<HTMLVideoElement>) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRatio = (touch.clientX - rect.left) / rect.width;
+    const mode = xRatio < 0.4 ? 'brightness' : xRatio > 0.6 ? 'volume' : 'none';
+    touchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+      mode,
+      initialBrightness: brightness,
+      initialVolume: videoRef.current ? videoRef.current.volume : 1,
+      hasMoved: false,
+    };
+  };
+
+  const handleVideoTouchMove = (e: React.TouchEvent<HTMLVideoElement>) => {
+    if (!touchStartRef.current) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const deltaY = touchStartRef.current.y - touch.clientY; // Glissement vers le haut = augmentation
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+
+    if (Math.abs(deltaY) > 12 && Math.abs(deltaY) > deltaX) {
+      touchStartRef.current.hasMoved = true;
+      justSwipedRef.current = true;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const normalizedDelta = deltaY / (rect.height * 0.55);
+
+      if (touchStartRef.current.mode === 'brightness') {
+        const nextBrightness = Math.round(
+          Math.max(40, Math.min(180, touchStartRef.current.initialBrightness + normalizedDelta * 100))
+        );
+        setBrightness(nextBrightness);
+        localStorage.setItem('stremo_video_brightness', String(nextBrightness));
+        triggerOSD(`Luminosité ${nextBrightness}%`, '☀️');
+      } else if (touchStartRef.current.mode === 'volume') {
+        if (videoRef.current) {
+          const nextVol = Math.max(0, Math.min(1, touchStartRef.current.initialVolume + normalizedDelta));
+          videoRef.current.volume = nextVol;
+          videoRef.current.muted = false;
+          setIsMuted(false);
+          triggerOSD(`Volume ${Math.round(nextVol * 100)}%`, nextVol === 0 ? '🔇' : '🔊');
+        }
+      }
+    }
+  };
+
   const handleVideoTouchEnd = (e: React.TouchEvent<HTMLVideoElement>) => {
+    if (touchStartRef.current?.hasMoved) {
+      touchStartRef.current = null;
+      setTimeout(() => {
+        justSwipedRef.current = false;
+      }, 150);
+      return;
+    }
+    touchStartRef.current = null;
+
     const touch = e.changedTouches[0];
     if (!touch) return;
     const now = Date.now();
@@ -1207,17 +1355,6 @@ export const VideoPlayer: React.FC<Props> = ({
     hideControlsTimer.current = setTimeout(() => {
       if (isPlaying) setShowControls(false);
     }, 3500);
-  };
-
-  const formatTime = (sec: number) => {
-    if (isNaN(sec)) return '00:00';
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = Math.floor(sec % 60);
-    if (h > 0) {
-      return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
-    }
-    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   // Keyboard navigation shortcuts
@@ -1342,6 +1479,8 @@ export const VideoPlayer: React.FC<Props> = ({
           filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`,
         }}
         onClick={togglePlay}
+        onTouchStart={handleVideoTouchStart}
+        onTouchMove={handleVideoTouchMove}
         onTouchEnd={handleVideoTouchEnd}
         crossOrigin="anonymous"
         playsInline

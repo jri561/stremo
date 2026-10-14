@@ -66,6 +66,10 @@ export interface WatchProgress {
   duration: number; // in seconds
   completed: number; // 0 or 1
   updatedAt: string;
+  audioTrack?: string | null;
+  subtitleTrack?: string | null;
+  subtitleDelay?: number | null;
+  playbackSpeed?: number | null;
 }
 
 export interface NextUpItem {
@@ -273,6 +277,10 @@ export class DatabaseManager {
     try { this.db.exec("ALTER TABLE addons ADD COLUMN accountId TEXT DEFAULT NULL"); } catch (_) {}
     try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_profiles_account ON profiles(accountId)"); } catch (_) {}
     try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_addons_account ON addons(accountId)"); } catch (_) {}
+    try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN audioTrack TEXT DEFAULT NULL"); } catch (_) {}
+    try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN subtitleTrack TEXT DEFAULT NULL"); } catch (_) {}
+    try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN subtitleDelay REAL DEFAULT 0"); } catch (_) {}
+    try { this.db.exec("ALTER TABLE watch_progress ADD COLUMN playbackSpeed REAL DEFAULT 1"); } catch (_) {}
 
     this.ensureDefaultData();
   }
@@ -410,15 +418,20 @@ export class DatabaseManager {
     const updatedAt = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO watch_progress (
-        profileId, mediaId, mediaType, title, poster, season, episode, currentTime, duration, completed, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        profileId, mediaId, mediaType, title, poster, season, episode, currentTime, duration, completed, updatedAt,
+        audioTrack, subtitleTrack, subtitleDelay, playbackSpeed
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(profileId, mediaId) DO UPDATE SET
         currentTime = excluded.currentTime,
         duration = excluded.duration,
         completed = excluded.completed,
         season = excluded.season,
         episode = excluded.episode,
-        updatedAt = excluded.updatedAt
+        updatedAt = excluded.updatedAt,
+        audioTrack = COALESCE(excluded.audioTrack, watch_progress.audioTrack),
+        subtitleTrack = COALESCE(excluded.subtitleTrack, watch_progress.subtitleTrack),
+        subtitleDelay = COALESCE(excluded.subtitleDelay, watch_progress.subtitleDelay),
+        playbackSpeed = COALESCE(excluded.playbackSpeed, watch_progress.playbackSpeed)
     `).run(
       item.profileId,
       item.mediaId,
@@ -430,7 +443,11 @@ export class DatabaseManager {
       item.currentTime,
       item.duration,
       item.completed,
-      updatedAt
+      updatedAt,
+      item.audioTrack || null,
+      item.subtitleTrack || null,
+      item.subtitleDelay !== undefined ? item.subtitleDelay : null,
+      item.playbackSpeed !== undefined ? item.playbackSpeed : null
     );
   }
 

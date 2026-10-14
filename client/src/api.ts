@@ -88,6 +88,10 @@ export interface WatchProgress {
   currentTime: number;
   duration: number;
   completed: number;
+  audioTrack?: string;
+  subtitleTrack?: string;
+  subtitleDelay?: number;
+  playbackSpeed?: number;
   updatedAt: string;
 }
 export interface NextUpItem {
@@ -283,6 +287,16 @@ export const api = {
     const res = await fetch(`${API_BASE}/progress/${profileId}`);
     const data = await res.json();
     return data.progress || [];
+  },
+  getMediaProgress: async (profileId: string, mediaId: string): Promise<WatchProgress | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/progress/${profileId}/${encodeURIComponent(mediaId)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.progress || null;
+    } catch {
+      return null;
+    }
   },
   getNextUp: async (profileId: string): Promise<NextUpItem[]> => {
     try {

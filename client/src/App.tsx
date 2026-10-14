@@ -1513,11 +1513,12 @@ export function App() {
               : undefined
           }
           onPlayNextEpisode={handlePlayNextEpisode}
-          onProgress={(curr, dur) => {
+          onProgress={(curr, dur, prefs) => {
             if (activeProfile && selectedItem) {
+              const targetMediaId = selectedVideoId || selectedItem.id;
               api.saveProgress({
                 profileId: activeProfile.id,
-                mediaId: selectedItem.id,
+                mediaId: targetMediaId,
                 mediaType: selectedItem.type,
                 title: selectedItem.name,
                 poster: selectedItem.poster,
@@ -1525,6 +1526,10 @@ export function App() {
                 episode: metaDetail?.videos?.find((v) => v.id === selectedVideoId)?.episode,
                 currentTime: curr,
                 duration: dur,
+                audioTrack: prefs?.audioTrack,
+                subtitleTrack: prefs?.subtitleTrack,
+                subtitleDelay: prefs?.subtitleDelay,
+                playbackSpeed: prefs?.playbackSpeed,
               });
             }
           }}

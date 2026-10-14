@@ -48,6 +48,19 @@ function getAccountFromReq(req: express.Request): { accountId?: string; account?
   return { accountId: sessionData.account.id, account: sessionData.account, token };
 }
 
+/**
+ * Valide qu'un profil ciblé appartient bien au compte authentifié (ou est en mode local invité).
+ */
+function verifyProfileAccess(profileId: string, accountId?: string | null): boolean {
+  if (!profileId) return false;
+  const profile = db.getProfile(profileId);
+  if (!profile) return false;
+  if (profile.accountId) {
+    return profile.accountId === (accountId || null);
+  }
+  return true;
+}
+
 // --- PROFILES ---
 app.get('/api/profiles', (req, res) => {
   try {
@@ -114,6 +127,10 @@ app.delete('/api/profiles/:id', (req, res) => {
 
 app.get('/api/profiles/:id/stats', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.id, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const stats = db.getProfileStats(req.params.id);
     res.json({ success: true, stats });
   } catch (err: any) {
@@ -123,6 +140,10 @@ app.get('/api/profiles/:id/stats', (req, res) => {
 
 app.get('/api/profiles/:id/next-up', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.id, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const nextUp = db.getProfileNextUp(req.params.id);
     res.json({ success: true, nextUp });
   } catch (err: any) {
@@ -133,6 +154,10 @@ app.get('/api/profiles/:id/next-up', (req, res) => {
 // --- WATCH PROGRESS / REPRISE DE LECTURE ---
 app.get('/api/progress/:profileId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const list = db.getWatchProgressList(req.params.profileId);
     res.json({ success: true, progress: list });
   } catch (err: any) {
@@ -142,6 +167,10 @@ app.get('/api/progress/:profileId', (req, res) => {
 
 app.get('/api/progress/:profileId/:mediaId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const item = db.getMediaProgress(req.params.profileId, req.params.mediaId);
     res.json({ success: true, progress: item || null });
   } catch (err: any) {
@@ -151,8 +180,15 @@ app.get('/api/progress/:profileId/:mediaId', (req, res) => {
 
 app.post('/api/progress', (req, res) => {
   try {
-    const { profileId, mediaId, mediaType, title, poster, season, episode, currentTime, duration, completed } = req.body;
+    const { accountId } = getAccountFromReq(req);
+    const {
+      profileId, mediaId, mediaType, title, poster, season, episode,
+      currentTime, duration, completed, audioTrack, subtitleTrack, subtitleDelay, playbackSpeed
+    } = req.body;
     if (!profileId || !mediaId) return res.status(400).json({ error: 'Champs manquants' });
+    if (!verifyProfileAccess(profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     db.saveWatchProgress({
       profileId,
       mediaId,
@@ -164,6 +200,10 @@ app.post('/api/progress', (req, res) => {
       currentTime: Number(currentTime) || 0,
       duration: Number(duration) || 0,
       completed: completed ? 1 : 0,
+      audioTrack,
+      subtitleTrack,
+      subtitleDelay: subtitleDelay !== undefined ? Number(subtitleDelay) : undefined,
+      playbackSpeed: playbackSpeed !== undefined ? Number(playbackSpeed) : undefined,
     });
     res.json({ success: true });
   } catch (err: any) {
@@ -173,6 +213,10 @@ app.post('/api/progress', (req, res) => {
 
 app.delete('/api/progress/:profileId/:mediaId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     db.deleteWatchProgress(req.params.profileId, req.params.mediaId);
     res.json({ success: true });
   } catch (err: any) {
@@ -183,6 +227,10 @@ app.delete('/api/progress/:profileId/:mediaId', (req, res) => {
 // --- LIBRARY / FAVORIS ---
 app.get('/api/library/:profileId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const items = db.getLibrary(req.params.profileId);
     res.json({ success: true, items });
   } catch (err: any) {
@@ -192,8 +240,12 @@ app.get('/api/library/:profileId', (req, res) => {
 
 app.post('/api/library', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { profileId, mediaId, mediaType, title, poster, year, genres } = req.body;
     if (!profileId || !mediaId) return res.status(400).json({ error: 'Champs manquants' });
+    if (!verifyProfileAccess(profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     db.addToLibrary(profileId, mediaId, mediaType, title, poster, year, genres);
     res.json({ success: true });
   } catch (err: any) {
@@ -203,6 +255,10 @@ app.post('/api/library', (req, res) => {
 
 app.delete('/api/library/:profileId/:mediaId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     db.removeFromLibrary(req.params.profileId, req.params.mediaId);
     res.json({ success: true });
   } catch (err: any) {
@@ -213,7 +269,11 @@ app.delete('/api/library/:profileId/:mediaId', (req, res) => {
 // --- SIGNETS / BOOKMARKS PERSONNALISÉS ---
 app.get('/api/bookmarks/:profileId/:mediaId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { profileId, mediaId } = req.params;
+    if (!verifyProfileAccess(profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const items = db.getBookmarks(profileId, mediaId);
     res.json({ success: true, items });
   } catch (err: any) {
@@ -223,9 +283,13 @@ app.get('/api/bookmarks/:profileId/:mediaId', (req, res) => {
 
 app.post('/api/bookmarks', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
     const { profileId, mediaId, time, title } = req.body;
     if (!profileId || !mediaId || typeof time !== 'number') {
       return res.status(400).json({ success: false, error: 'Champs profileId, mediaId et time requis' });
+    }
+    if (!verifyProfileAccess(profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
     }
     const bookmark = db.addBookmark(profileId, mediaId, time, title);
     res.json({ success: true, bookmark });
@@ -294,6 +358,10 @@ app.delete('/api/addons/:id', (req, res) => {
 // --- TRAKT.TV SCROBBLER & SYNC ---
 app.get('/api/trakt/auth/:profileId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const auth = db.getTraktAuth(req.params.profileId);
     res.json({ success: true, connected: !!auth, username: auth?.username || null });
   } catch (err: any) {
@@ -303,6 +371,10 @@ app.get('/api/trakt/auth/:profileId', (req, res) => {
 
 app.post('/api/trakt/auth/:profileId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     const { accessToken, refreshToken, expiresAt, username } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Token manquant' });
     db.saveTraktAuth(req.params.profileId, accessToken, refreshToken, expiresAt, username);
@@ -314,6 +386,10 @@ app.post('/api/trakt/auth/:profileId', (req, res) => {
 
 app.delete('/api/trakt/auth/:profileId', (req, res) => {
   try {
+    const { accountId } = getAccountFromReq(req);
+    if (!verifyProfileAccess(req.params.profileId, accountId)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé à ce profil' });
+    }
     db.removeTraktAuth(req.params.profileId);
     res.json({ success: true });
   } catch (err: any) {

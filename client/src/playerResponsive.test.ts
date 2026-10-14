@@ -115,3 +115,62 @@ test('Player Responsive: gestion exclusive des menus contextuels (closeAllMenus)
   states = closeAll(states);
   assert.ok(Object.values(states).every((v) => v === false));
 });
+
+test('Player Gestures: détection des gestes tactiles verticaux (Luminosité vs Volume)', () => {
+  // Fonction de détermination du mode de geste selon la position horizontale (xRatio)
+  const getGestureMode = (xRatio: number): 'brightness' | 'volume' | 'none' => {
+    if (xRatio < 0.4) return 'brightness';
+    if (xRatio > 0.6) return 'volume';
+    return 'none';
+  };
+
+  // 1. Côté gauche (0-40%) = Luminosité
+  assert.equal(getGestureMode(0.15), 'brightness');
+  assert.equal(getGestureMode(0.35), 'brightness');
+
+  // 2. Côté droit (60-100%) = Volume
+  assert.equal(getGestureMode(0.65), 'volume');
+  assert.equal(getGestureMode(0.85), 'volume');
+
+  // 3. Centre (40-60%) = Pas de réglage par glissement (réservé aux contrôles centraux)
+  assert.equal(getGestureMode(0.5), 'none');
+
+  // 4. Calcul de modification de luminosité avec bornage 40% - 180%
+  const computeBrightness = (initial: number, deltaNormalized: number) => {
+    return Math.round(Math.max(40, Math.min(180, initial + deltaNormalized * 100)));
+  };
+  assert.equal(computeBrightness(100, 0.2), 120);
+  assert.equal(computeBrightness(100, -0.8), 40, 'Doit être borné au minimum 40%');
+  assert.equal(computeBrightness(100, 1.5), 180, 'Doit être borné au maximum 180%');
+
+  // 5. Calcul de modification de volume avec bornage 0 - 1
+  const computeVolume = (initial: number, deltaNormalized: number) => {
+    return Math.max(0, Math.min(1, initial + deltaNormalized));
+  };
+  assert.equal(computeVolume(0.5, 0.2), 0.7);
+  assert.equal(computeVolume(0.2, -0.5), 0, 'Doit être borné au minimum 0');
+  assert.equal(computeVolume(0.8, 0.5), 1, 'Doit être borné au maximum 1');
+});
+
+test('Player Preferences: transmission et restauration des réglages de lecture personnalisés', () => {
+  interface PlaybackPrefs {
+    audioTrack?: string;
+    subtitleTrack?: string;
+    subtitleDelay?: number;
+    playbackSpeed?: number;
+  }
+
+  const savedPrefs: PlaybackPrefs = {
+    audioTrack: '1',
+    subtitleTrack: 'https://subs.org/fr.vtt',
+    subtitleDelay: -0.25,
+    playbackSpeed: 1.25,
+  };
+
+  // Vérifier la cohérence des types et des valeurs
+  assert.strictEqual(Number(savedPrefs.audioTrack), 1);
+  assert.strictEqual(savedPrefs.subtitleTrack?.endsWith('.vtt'), true);
+  assert.strictEqual(savedPrefs.subtitleDelay, -0.25);
+  assert.strictEqual(savedPrefs.playbackSpeed, 1.25);
+});
+

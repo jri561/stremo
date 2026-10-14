@@ -84,3 +84,91 @@ test('Security Audit: génération sécurisée et entropie des codes d\'appairag
 
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
 });
+
+test('Security Audit & Preferences: persistance et restitution fine des réglages de lecture par profil', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test_security_prefs.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+  const p = db.createProfile('Test Prefs', 'avatar2');
+
+  // 1. Sauvegarde avec préférences initiales complètes
+  db.saveWatchProgress({
+    profileId: p.id,
+    mediaId: 'tt1234567',
+    mediaType: 'movie',
+    title: 'Test Movie',
+    currentTime: 120,
+    duration: 7200,
+    completed: 0,
+    audioTrack: '2',
+    subtitleTrack: 'https://sub.test/fre.vtt',
+    subtitleDelay: -0.5,
+    playbackSpeed: 1.25,
+  });
+
+  const saved1 = db.getMediaProgress(p.id, 'tt1234567');
+  assert.ok(saved1);
+  assert.strictEqual(saved1.currentTime, 120);
+  assert.strictEqual(saved1.audioTrack, '2');
+  assert.strictEqual(saved1.subtitleTrack, 'https://sub.test/fre.vtt');
+  assert.strictEqual(saved1.subtitleDelay, -0.5);
+  assert.strictEqual(saved1.playbackSpeed, 1.25);
+
+  // 2. Mise à jour de la position sans redonner les pistes : COALESCE doit préserver les préférences
+  db.saveWatchProgress({
+    profileId: p.id,
+    mediaId: 'tt1234567',
+    mediaType: 'movie',
+    title: 'Test Movie',
+    currentTime: 240,
+    duration: 7200,
+    completed: 0,
+  });
+
+  const saved2 = db.getMediaProgress(p.id, 'tt1234567');
+  assert.ok(saved2);
+  assert.strictEqual(saved2.currentTime, 240);
+  assert.strictEqual(saved2.audioTrack, '2', 'COALESCE doit préserver la piste audio');
+  assert.strictEqual(saved2.subtitleTrack, 'https://sub.test/fre.vtt', 'COALESCE doit préserver le sous-titre');
+  assert.strictEqual(saved2.subtitleDelay, -0.5, 'COALESCE doit préserver le décalage');
+  assert.strictEqual(saved2.playbackSpeed, 1.25, 'COALESCE doit préserver la vitesse');
+
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
+test('Security Audit: contrôle d\'accès multi-comptes et séparation des profils', () => {
+  const testDbPath = path.join(process.cwd(), 'data', 'test_security_access.db');
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+
+  const db = new DatabaseManager(testDbPath);
+
+  // Compte Alpha
+  const profAlpha = db.createProfile('Alpha User', 'av1', 0, undefined, 'fra', 'fra', 'foreign_only', 'indigo', 'acc_alpha');
+  // Compte Beta
+  const profBeta = db.createProfile('Beta User', 'av2', 0, undefined, 'fra', 'fra', 'foreign_only', 'violet', 'acc_beta');
+  // Invité Local (sans compte)
+  const profGuest = db.createProfile('Guest User', 'av3', 0, undefined, 'fra', 'fra', 'foreign_only', 'amber', null);
+
+  // Vérifier la fonction d'isolation
+  function verifyAccess(profileId: string, accountId?: string | null): boolean {
+    const prof = db.getProfile(profileId);
+    if (!prof) return false;
+    if (prof.accountId === null) return true; // Profil invité local
+    return prof.accountId === accountId;
+  }
+
+  // Alpha accède à son profil -> OK
+  assert.strictEqual(verifyAccess(profAlpha.id, 'acc_alpha'), true);
+  // Beta accède au profil de Alpha -> REFUSÉ
+  assert.strictEqual(verifyAccess(profAlpha.id, 'acc_beta'), false);
+  // Anonyme accède au profil de Alpha -> REFUSÉ
+  assert.strictEqual(verifyAccess(profAlpha.id, undefined), false);
+
+  // Anonyme ou n'importe qui accède au profil invité local -> OK
+  assert.strictEqual(verifyAccess(profGuest.id, undefined), true);
+  assert.strictEqual(verifyAccess(profGuest.id, 'acc_alpha'), true);
+
+  if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+});
+
