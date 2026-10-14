@@ -229,39 +229,66 @@ npm start
 ```
 *Le serveur Express écoute sur `http://localhost:3001` et sert directement l'interface web optimisée ainsi que l'API sur le même port.*
 
-### 2. Lancer les tests automatisés (56 tests unitaires & intégration + 14 tests E2E Chromium)
+### 2. Lancer les tests automatisés (91 tests unitaires & intégration)
 ```bash
-# Tests unitaires & intégration (client + serveur) - 56 tests 100% verts
+# Tests unitaires & intégration complets (client + serveur) - 91 tests 100% verts
 npm test
 
 # Tests d'intégration média réels (FFmpeg + WebTorrent P2P)
 cd server && node --test dist/tests/media.test.js
 
-# Audit End-to-End complet dans Chromium réel (Playwright)
-node audit_chromium_e2e.mjs
-node audit_subtitles_settings_e2e.mjs
+# Tests du sous-système HDMI-CEC et télécommandes TV
+node --test server/dist/tests/cecHardware.test.js
+node --test client/src/cecRemote.test.ts
 ```
 
 ---
 
-## 👨‍👩‍👧‍👦 Guide d'Usage Familial & Recommandations
+## 🎮 Profils Matériels Spécifiques & Télécommandes HDMI-CEC
 
-Pour que l'expérience soit 100% fluide pour des utilisateurs non-techniques :
+Stremo supporte nativement le contrôle par les télécommandes de télévision de salon via le bus **HDMI-CEC** :
 
-1. **Choix du Lecteur par Appareil** :
-   - **Sur Ordinateur de salon (Desktop)** : activez le lecteur externe **VLC** ou **MPV** dans les paramètres. Cela permet de lire 100% des fichiers (y compris 4K HDR, Dolby Vision et pistes son DTS/EAC3) sans contrainte liée au navigateur.
-   - **Sur Tablette / Smartphone / Android TV** : choisissez **Just Player** ou **Nova Player** (lecteurs légers compatibles avec les liens d'intention de l'application).
-   - **Sur Navigateur Web standard** : privilégiez le bouton **Lecture rapide** ou les flux H.264 / 1080p MP4.
+1. **Détection Matérielle & Pont Système** :
+   - Compatible avec les contrôleurs noyau Linux (`/dev/cec0`, `/dev/cec1`, `/sys/class/cec`), adaptateurs USB Pulse-Eight et Android TV.
+   - Pont SSE temps réel (`/api/hardware/cec/events`) diffusant les ordres de télécommande vers l'interface sans latence.
 
-2. **Démarrage automatique en arrière-plan (PM2 ou Systemd)** :
-   Pour que l'application reste active sans ouvrir de terminal :
-   ```bash
-   # Via PM2
-   npm install -g pm2
-   pm2 start npm --name "stremo" -- start
-   pm2 save
-   pm2 startup
-   ```
+2. **6 Profils Matériels Constructeurs Dédiés** :
+   - **HDMI-CEC Universel** : standard HDMI 1.4/2.0/2.1 (Philips EasyLink, Panasonic Viera Link).
+   - **Samsung Anynet+** : optimisé pour Samsung Smart Remote / One Remote (Tizen Return 10009).
+   - **LG SimpLink** : optimisé pour LG Magic Remote (webOS Back 461, molette et raccourcis).
+   - **Sony BRAVIA Sync** : boutons Sync Menu, Info et Action.
+   - **Android TV / Shield** : télécommandes Bluetooth AOSP, boîtiers G10/G20 et Nvidia Shield.
+   - **Linux HTPC & Raspberry Pi** : adaptateurs Pulse-Eight et bus CEC direct.
+
+3. **Raccourcis des 4 Touches de Couleur (Télécommande TV)** :
+   - 🔴 **Touche Rouge** : Basculer les Sous-Titres (Lecteur) / Ouvrir la Recherche (Accueil).
+   - 🟢 **Touche Verte** : Piste Audio & Transcodage (Lecteur) / Basculer le Mode TV (Accueil).
+   - 🟡 **Touche Jaune** : Marquer un Signet instantané (Lecteur) / Téléchargements (Accueil).
+   - 🔵 **Touche Bleue** : Ratio d'aspect & Zoom (Lecteur) / Paramètres (Accueil).
+
+4. **Banc de Test Interactif Intégré** :
+   - Accessible dans l'onglet *Paramètres > Télécommande & CEC* : affiche en direct la touche pressée, son code hexadécimal CEC et l'action déclenchée.
+
+---
+
+## 🤖 Pipeline CI/CD GitHub Actions & Releases Automatisées
+
+Deux workflows automatisés assurent la qualité et la distribution continue :
+
+1. **Intégration Continue (`.github/workflows/ci.yml`)** :
+   - Déclenché à chaque `push` sur `main` et sur toutes les Pull Requests.
+   - Vérification des types TypeScript (`tsc`), compilation Vite, exécution des 91 tests unitaires et intégration.
+   - Vérification systématique de la compilabilité des livrables APK et Linux.
+
+2. **Livraison & Signature Automatisée (`.github/workflows/release.yml`)** :
+   - Déclenché à chaque tag Git `v*` (ex: `git tag v1.0.1 && git push origin v1.0.1`) ou manuellement via `workflow_dispatch`.
+   - Compile le bundle web de production.
+   - Génère et signe les paquets natifs finaux :
+     - `stremo-v1.0.0-universal.apk` (Android universel)
+     - `stremo-android-tv-v1.0.0.apk` (Android TV Leanback 10-pieds)
+     - `stremo-linux-x64-v1.0.0.tar.gz` (Archive portable Linux x64)
+   - Calcule et vérifie les empreintes cryptographiques SHA-256 (`*.sha256`).
+   - Publie automatiquement la release sur GitHub (`gh release create`) avec notes de version détaillées et tous les actifs binaires rattachés.
 
 ---
 
@@ -270,7 +297,7 @@ Pour que l'expérience soit 100% fluide pour des utilisateurs non-techniques :
 Stremo dispose d'une configuration clé en main pour chaque écran. Consultez le guide complet : [DEPLOY_PLATFORMS.md](file:///home/toto/Documents/stremo/DEPLOY_PLATFORMS.md).
 
 - **📺 Android TV & Box Salon (Expérience 10-pieds)** :
-  - Support Leanback dans [android/app/src/main/AndroidManifest.xml](file:///home/toto/Documents/stremo/android/app/src/main/AndroidManifest.xml).
+  - Support Leanback et touches CEC dans [android/app/src/main/AndroidManifest.xml](file:///home/toto/Documents/stremo/android/app/src/main/AndroidManifest.xml).
   - Navigation spatiale D-Pad (télécommande ▲▼◄►, OK, Retour).
   - Détection automatique et bascule via touche `T`.
 - **📱 Android (Smartphones & Tablettes)** :
@@ -289,5 +316,6 @@ Stremo dispose d'une configuration clé en main pour chaque écran. Consultez le
   - Installation en une commande : `./scripts/install-linux.sh`.
   - Exécutable binaire : `stremo` ou `./bin/stremo`.
   - Intégration de bureau XDG : [stremo.desktop](file:///home/toto/Documents/stremo/stremo.desktop).
+
 
 

@@ -49,6 +49,7 @@ import { AccountModal } from './components/AccountModal';
 import { getStoredDownloads, type DownloadItem } from './downloads';
 import type { PlayerChoice } from './players';
 import { rankStreams, detectTvDevice, selectBestStreamForQuickPlay } from './streams';
+import { cecRemote, type CecCommand } from './services/cecRemote';
 
 export function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -230,6 +231,64 @@ export function App() {
     window.addEventListener('keydown', handleGlobalKey);
     return () => window.removeEventListener('keydown', handleGlobalKey);
   }, []);
+
+  // Écouteur global des événements HDMI-CEC (Télécommandes Smart TV & Box TV)
+  useEffect(() => {
+    const unsubscribe = cecRemote.subscribe((cmd: CecCommand) => {
+      // Si le lecteur est actif, il prend la priorité absolue
+      if (activePlayerStream) return;
+
+      switch (cmd.action) {
+        case 'color_red':
+          setActiveNav('search');
+          break;
+        case 'color_green':
+          toggleTvMode();
+          break;
+        case 'color_yellow':
+          setShowDownloadsModal(true);
+          break;
+        case 'color_blue':
+          setShowSettingsModal(true);
+          break;
+        case 'info':
+          setShowStatsModal((prev) => !prev);
+          break;
+        case 'menu':
+          setShowSettingsModal((prev) => !prev);
+          break;
+        case 'back':
+          if (showAuthModal) setShowAuthModal(false);
+          else if (showSettingsModal) setShowSettingsModal(false);
+          else if (showDownloadsModal) setShowDownloadsModal(false);
+          else if (showStatsModal) setShowStatsModal(false);
+          else if (showAddonsModal) setShowAddonsModal(false);
+          else if (showBackupModal) setShowBackupModal(false);
+          else if (showTraktModal) setShowTraktModal(false);
+          else if (showDeviceSyncModal) setShowDeviceSyncModal(false);
+          else if (showAccountModal) setShowAccountModal(false);
+          else if (selectedItem) setSelectedItem(null);
+          else if (activeNav !== 'home') setActiveNav('home');
+          break;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [
+    activePlayerStream,
+    showAuthModal,
+    showSettingsModal,
+    showDownloadsModal,
+    showStatsModal,
+    showAddonsModal,
+    showBackupModal,
+    showTraktModal,
+    showDeviceSyncModal,
+    showAccountModal,
+    selectedItem,
+    activeNav,
+    isTvMode,
+  ]);
 
   useEffect(() => {
     if (activeProfile) {
@@ -1684,6 +1743,10 @@ export function App() {
             <span className="hidden sm:flex items-center gap-2 text-slate-300">
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">▲▼◄►</kbd> Naviguer
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">OK</kbd> Choisir
+              <span className="flex items-center gap-1 text-[11px]"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Recherche</span>
+              <span className="flex items-center gap-1 text-[11px]"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> TV</span>
+              <span className="flex items-center gap-1 text-[11px]"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Signets</span>
+              <span className="flex items-center gap-1 text-[11px]"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span> Réglages</span>
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[10px]">T</kbd> Quitter TV
             </span>
           </div>

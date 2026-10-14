@@ -38,6 +38,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { api, type StreamSource, type BookmarkItem } from '../api';
+import { cecRemote, type CecCommand } from '../services/cecRemote';
 import { getAndroidIntentUrl } from '../players';
 import {
   createLocalSubtitleTrack,
@@ -1463,6 +1464,96 @@ export const VideoPlayer: React.FC<Props> = ({
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
   }, []);
+
+  // Écouteur des commandes matérielles et virtuelles HDMI-CEC (Samsung, LG, Sony, Android TV, HTPC)
+  useEffect(() => {
+    const unsubscribe = cecRemote.subscribe((cmd: CecCommand) => {
+      switch (cmd.action) {
+        case 'play':
+          if (!isPlaying) togglePlay();
+          triggerOSD('Lecture (HDMI-CEC)', '▶️');
+          break;
+        case 'pause':
+          if (isPlaying) togglePlay();
+          triggerOSD('Pause (HDMI-CEC)', '⏸️');
+          break;
+        case 'play_pause':
+          togglePlay();
+          triggerOSD(isPlaying ? 'Pause (HDMI-CEC)' : 'Lecture (HDMI-CEC)', isPlaying ? '⏸️' : '▶️');
+          break;
+        case 'stop':
+          onClose();
+          break;
+        case 'fast_forward':
+          skip(15);
+          triggerOSD('+15s (HDMI-CEC)', '⏩');
+          break;
+        case 'rewind':
+          skip(-15);
+          triggerOSD('-15s (HDMI-CEC)', '⏪');
+          break;
+        case 'next':
+          if (nextEpisode && onPlayNextEpisode) {
+            handleSkipToNextEpisode();
+          }
+          break;
+        case 'volume_up':
+          if (videoRef.current) {
+            const newVol = Math.min(1, videoRef.current.volume + 0.1);
+            videoRef.current.volume = newVol;
+            setIsMuted(false);
+            triggerOSD(`Volume ${Math.round(newVol * 100)}%`, '🔊');
+          }
+          break;
+        case 'volume_down':
+          if (videoRef.current) {
+            const newVol = Math.max(0, videoRef.current.volume - 0.1);
+            videoRef.current.volume = newVol;
+            triggerOSD(`Volume ${Math.round(newVol * 100)}%`, newVol === 0 ? '🔇' : '🔉');
+          }
+          break;
+        case 'mute':
+          if (videoRef.current) {
+            const nextMuted = !videoRef.current.muted;
+            videoRef.current.muted = nextMuted;
+            setIsMuted(nextMuted);
+            triggerOSD(nextMuted ? 'Son coupé' : 'Son activé', nextMuted ? '🔇' : '🔊');
+          }
+          break;
+        case 'subtitles':
+        case 'color_red':
+          setShowSubMenu((prev) => !prev);
+          triggerOSD('Sous-titres (🔴 Rouge)', '💬');
+          break;
+        case 'audio_track':
+        case 'color_green':
+          setShowAudioMenu((prev) => !prev);
+          triggerOSD('Pistes Audio (🟢 Vert)', '🎧');
+          break;
+        case 'color_yellow':
+          handleAddBookmark();
+          triggerOSD('Signet ajouté (🟡 Jaune)', '🔖');
+          break;
+        case 'aspect_ratio':
+        case 'color_blue':
+          handleCycleAspectRatio();
+          triggerOSD('Format vidéo (🔵 Bleu)', '📐');
+          break;
+        case 'info':
+          triggerOSD(title ? `${title}` : 'Stremo Player', 'ℹ️');
+          break;
+        case 'back':
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          } else {
+            onClose();
+          }
+          break;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isPlaying, nextEpisode, onPlayNextEpisode, title]);
 
   return (
     <div

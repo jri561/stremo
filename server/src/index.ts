@@ -8,6 +8,7 @@ import { DatabaseManager } from './db.js';
 import { AddonClient, maskAddonUrl, isSafePlayableUrl, isPublicHttpUrl, normalizePoster, buildMagnet } from './addonClient.js';
 import { proxyStream, proxySubtitle, getSkipTimes } from './streamProxy.js';
 import { notifyPairSuccess, handlePairSse, handleRemoteCommand, handleLanAnnounce, handleGetLanDevices } from './syncEvents.js';
+import { handleGetCecStatus, handleSetCecProfile, handleSimulateCecCommand, handleCecEventsSse } from './cecBridge.js';
 import { torrentEngine } from './torrentEngine.js';
 import { transcodeEngine } from './transcodeEngine.js';
 import { isAuthorized, keysMatch, isTunnelRequest, isLocalSocket } from './auth.js';
@@ -649,6 +650,12 @@ app.post('/api/sync/remote/:code', handleRemoteCommand);
 // Découverte des appareils connectés sur le même réseau local (LAN discovery)
 app.post('/api/sync/lan/announce', handleLanAnnounce);
 app.get('/api/sync/lan/devices', handleGetLanDevices);
+
+// --- CONTRÔLE MATÉRIEL HDMI-CEC & PROFILS TÉLÉCOMMANDE TV ---
+app.get('/api/hardware/cec/status', handleGetCecStatus);
+app.post('/api/hardware/cec/profile', handleSetCecProfile);
+app.post('/api/hardware/cec/simulate', handleSimulateCecCommand);
+app.get('/api/hardware/cec/events', handleCecEventsSse);
 
 // --- PROXY DE STREAMING VIDÉO & SOUS-TITRES (CONTOURNEMENT CORS & RANGE REQUESTS) ---
 app.get('/api/proxy/stream', proxyStream);

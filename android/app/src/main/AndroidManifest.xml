@@ -18,6 +18,9 @@
     <uses-feature
         android:name="android.hardware.gamepad"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.hdmi.cec"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -57,6 +60,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="stremo" />
+            </intent-filter>
+
+            <!-- Réception des boutons multimédia et télécommande TV HDMI-CEC -->
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
 
         </activity>

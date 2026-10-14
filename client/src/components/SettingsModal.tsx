@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -14,9 +14,13 @@ import {
   Info,
   Sliders,
   Headphones,
+  Tv,
+  Radio,
+  Gamepad2,
 } from 'lucide-react';
 import type { Profile } from '../api';
 import { generateSubtitleCss, type SubtitleStyleSettings } from '../subtitles';
+import { cecRemote, CEC_PROFILES, type CecCommand } from '../services/cecRemote';
 
 interface Props {
   isOpen: boolean;
@@ -50,7 +54,30 @@ export const SettingsModal: React.FC<Props> = ({
   isTvMode,
   onToggleTvMode,
 }) => {
-  const [activeTab, setActiveTab] = useState<'audio_subs' | 'playback' | 'interface'>('audio_subs');
+  const [activeTab, setActiveTab] = useState<'audio_subs' | 'playback' | 'interface' | 'remote_cec'>('audio_subs');
+
+  // Télécommande & HDMI-CEC
+  const [cecEnabled, setCecEnabled] = useState<boolean>(() => cecRemote.isCecEnabled());
+  const [cecProfileId, setCecProfileId] = useState<string>(() => cecRemote.getActiveProfile().id);
+  const [cecOsd, setCecOsd] = useState<boolean>(() => cecRemote.isOsdFeedbackEnabled());
+  const [lastCecCommand, setLastCecCommand] = useState<CecCommand | null>(() => cecRemote.getLastCommand());
+  const [cecHardwareStatus, setCecHardwareStatus] = useState<{ available: boolean; adapterPath: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/hardware/cec/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          setCecHardwareStatus({ available: data.available, adapterPath: data.adapterPath });
+        }
+      })
+      .catch(() => {});
+
+    const unsubscribe = cecRemote.subscribe((cmd) => {
+      setLastCecCommand(cmd);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Audio & Sous-titres
   const [audioLang, setAudioLang] = useState<string>(activeProfile.preferredAudioLanguage || 'fra');
@@ -124,6 +151,16 @@ export const SettingsModal: React.FC<Props> = ({
     localStorage.setItem('stremo_use_stream_proxy', String(useStreamProxy));
     localStorage.setItem('stremo_prefer_transcode_audio', String(preferTranscodeAudio));
 
+    // Persistance Télécommande & HDMI-CEC
+    cecRemote.setCecEnabled(cecEnabled);
+    cecRemote.setActiveProfile(cecProfileId);
+    cecRemote.setOsdFeedbackEnabled(cecOsd);
+    fetch('/api/hardware/cec/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: cecProfileId }),
+    }).catch(() => {});
+
     setSavingToast(true);
     setTimeout(() => {
       setSavingToast(false);
@@ -183,6 +220,7 @@ export const SettingsModal: React.FC<Props> = ({
             { id: 'audio_subs', label: 'Audio & Sous-titres', icon: <Subtitles className="w-4 h-4" /> },
             { id: 'playback', label: 'Lecture & Intros', icon: <FastForward className="w-4 h-4" /> },
             { id: 'interface', label: 'Lecteur & App', icon: <Monitor className="w-4 h-4" /> },
+            { id: 'remote_cec', label: 'Télécommande & CEC', icon: <Tv className="w-4 h-4" /> },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -620,6 +658,199 @@ export const SettingsModal: React.FC<Props> = ({
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Onglet 4 : Télécommande & Matériel HDMI-CEC */}
+          {activeTab === 'remote_cec' && (
+            <div className="space-y-6">
+              {/* Statut matériel du contrôleur HDMI-CEC */}
+              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-2.5 rounded-lg ${
+                      cecHardwareStatus?.available ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'
+                    }`}
+                  >
+                    <Tv className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-white">Contrôleur HDMI-CEC</h4>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          cecHardwareStatus?.available ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
+                        }`}
+                      >
+                        {cecHardwareStatus?.available ? 'Matériel Détecté' : 'Émulation Active (Web / Smart TV)'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {cecHardwareStatus?.adapterPath
+                        ? `Périphérique : ${cecHardwareStatus.adapterPath}`
+                        : 'Compatible télécommandes TV (Samsung Anynet+, LG SimpLink, Sony BRAVIA, Android TV)'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-300 font-semibold">OSD</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !cecOsd;
+                        setCecOsd(next);
+                        cecRemote.setOsdFeedbackEnabled(next);
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        cecOsd ? 'bg-indigo-600' : 'bg-white/20'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                          cecOsd ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-300 font-semibold">Activer CEC</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !cecEnabled;
+                        setCecEnabled(next);
+                        cecRemote.setCecEnabled(next);
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        cecEnabled ? 'bg-indigo-600' : 'bg-white/20'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                          cecEnabled ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sélecteur de profil matériel */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Profil matériel de la télécommande TV</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {CEC_PROFILES.map((p) => {
+                    const isSelected = cecProfileId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setCecProfileId(p.id);
+                          cecRemote.setActiveProfile(p.id);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-indigo-600/10 border-indigo-500 shadow-md shadow-indigo-500/10'
+                            : 'bg-white/[0.02] border-white/5 hover:border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`text-xs font-bold ${isSelected ? 'text-indigo-400' : 'text-white'}`}>
+                            {p.name}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{p.description}</p>
+                        <span className="text-[10px] text-slate-500 mt-2 font-mono">{p.vendor}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Raccourcis Touches de Couleur CEC */}
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Raccourcis des 4 touches de couleur (Télécommande TV)</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-red-500/20 flex flex-col items-center text-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/40"></span>
+                    <span className="font-bold text-white text-[11px]">Touche Rouge</span>
+                    <span className="text-[10px] text-slate-400">Sous-titres / Recherche</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-emerald-500/20 flex flex-col items-center text-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/40"></span>
+                    <span className="font-bold text-white text-[11px]">Touche Verte</span>
+                    <span className="text-[10px] text-slate-400">Audio / Mode TV</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-amber-500/20 flex flex-col items-center text-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-amber-400 shadow-lg shadow-amber-500/40"></span>
+                    <span className="font-bold text-white text-[11px]">Touche Jaune</span>
+                    <span className="text-[10px] text-slate-400">Signet / Favoris</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-blue-500/20 flex flex-col items-center text-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-blue-500 shadow-lg shadow-blue-500/40"></span>
+                    <span className="font-bold text-white text-[11px]">Touche Bleue</span>
+                    <span className="text-[10px] text-slate-400">Format d'image (Zoom)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Testeur interactif en direct */}
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-indigo-500/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Gamepad2 className="w-4 h-4 text-indigo-400" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                      Testeur interactif de télécommande
+                    </h4>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Appuyez sur une touche pour tester</span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between min-h-[50px]">
+                  {lastCecCommand ? (
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-mono text-xs font-bold">
+                        {lastCecCommand.hexCode || '0x00'}
+                      </span>
+                      <div>
+                        <p className="text-xs font-bold text-white">{lastCecCommand.label}</p>
+                        <p className="text-[10px] text-slate-400">
+                          Action: {lastCecCommand.action} • Source: {lastCecCommand.source}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-500 italic">En attente d'un signal télécommande ou clavier...</span>
+                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => cecRemote.simulateAction('play_pause')}
+                      className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-[11px] text-slate-300 cursor-pointer"
+                    >
+                      Test Lecture
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cecRemote.simulateAction('color_red')}
+                      className="px-2.5 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-[11px] text-red-300 cursor-pointer"
+                    >
+                      Test Rouge
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

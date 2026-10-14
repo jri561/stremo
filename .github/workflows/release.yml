@@ -1,0 +1,125 @@
+name: Release Automated Packaging & Signing
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag de release (ex: v1.0.1)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build, Sign & Publish Native Releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install cryptography
+
+      - name: Run verification test suite
+        run: npm test
+
+      - name: Build Web Production Bundle
+        run: |
+          npm run build --prefix client
+          npm run build --prefix server
+
+      - name: Package Signed Android & Android TV APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "📦 Packaging Android universal and Android TV Leanback APKs..."
+          python3 scripts/package-apk.py
+          ls -la dist-android/
+
+      - name: Package Linux Desktop Portable Archive
+        run: |
+          echo "📦 Packaging Linux x64 portable archive..."
+          bash scripts/package-linux.sh
+          ls -la dist-linux/
+
+      - name: Verify checksums
+        run: |
+          echo "🔍 Vérification des sommes de contrôle SHA-256..."
+          cd dist-android
+          sha256sum -c stremo-v1.0.0-universal.apk.sha256
+          cd ../dist-linux
+          sha256sum -c stremo-linux-x64-v1.0.0.tar.gz.sha256
+
+      - name: Determine Release Tag
+        id: release_tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v1.0.0"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Release tag déterminé : $TAG"
+
+      - name: Generate Changelog & Release Notes
+        id: notes
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          cat << 'EOF' > release_notes.md
+          ## Stremo 🚀 Release Native
+
+          ### Livrables disponibles :
+          - **Android & Android TV** : `stremo-v1.0.0-universal.apk` (Signé v1 RSA-2048 / SHA-256)
+          - **Android TV Dédié (Leanback 10-pieds)** : `stremo-android-tv-v1.0.0.apk`
+          - **Linux Portable x64** : `stremo-linux-x64-v1.0.0.tar.gz` (Exécutable autonome + Web unifié)
+
+          ### Nouveautés majeures :
+          - **Support matériel HDMI-CEC complet** : télécommandes TV (Samsung Anynet+, LG SimpLink, Sony BRAVIA Sync, Android TV, Linux HTPC) avec décodage des touches multimédia, D-Pad et touches de couleur (Rouge, Vert, Jaune, Bleu).
+          - **Packaging natif automatisé** : scripts et pipeline CI/CD GitHub Actions pour signatures et checksums SHA-256.
+          - **Lecteur optimisé** : gestion sans fuite mémoire de l'AudioContext, transcodage AC3/DTS temps réel et navigation fluide 10-pieds.
+
+          ### Vérification d'intégrité (SHA-256) :
+          Consultez les fichiers `.sha256` joints aux actifs ci-dessous.
+          EOF
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          gh release create "$TAG" \
+            dist-android/stremo-v1.0.0-universal.apk \
+            dist-android/stremo-android-tv-v1.0.0.apk \
+            dist-android/stremo-v1.0.0-universal.apk.sha256 \
+            dist-linux/stremo-linux-x64-v1.0.0.tar.gz \
+            dist-linux/stremo-linux-x64-v1.0.0.tar.gz.sha256 \
+            --title "Stremo $TAG" \
+            --notes-file release_notes.md \
+            --draft=false \
+            --prerelease=false

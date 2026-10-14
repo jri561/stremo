@@ -103,3 +103,37 @@ test('Packaging final: scripts npm build:apk et build:desktop configurés et liv
   assert.ok(fs.statSync(apkUniversal).size > 100000, 'L\'APK doit contenir les assets et manifestes');
 });
 
+test('GitHub Actions CI/CD: workflows de validation et de release automatisée configurés', () => {
+  const ciPath = path.resolve(rootDir, '.github/workflows/ci.yml');
+  const releasePath = path.resolve(rootDir, '.github/workflows/release.yml');
+
+  assert.ok(fs.existsSync(ciPath), 'Workflow ci.yml doit exister');
+  assert.ok(fs.existsSync(releasePath), 'Workflow release.yml doit exister');
+
+  const ciContent = fs.readFileSync(ciPath, 'utf-8');
+  assert.ok(ciContent.includes('push:'), 'Déclencheur push requis dans ci.yml');
+  assert.ok(ciContent.includes('pull_request:'), 'Déclencheur pull_request requis dans ci.yml');
+  assert.ok(ciContent.includes('npm test'), 'Vérification npm test requise dans CI');
+  assert.ok(ciContent.includes('npm run build:apk'), 'Vérification build:apk requise dans CI');
+  assert.ok(ciContent.includes('npm run build:desktop'), 'Vérification build:desktop requise dans CI');
+
+  const releaseContent = fs.readFileSync(releasePath, 'utf-8');
+  assert.ok(releaseContent.includes("tags:"), 'Déclencheur par tag requis dans release.yml');
+  assert.ok(releaseContent.includes("v*"), 'Filtre de tag v* requis');
+  assert.ok(releaseContent.includes('workflow_dispatch:'), 'Déclencheur manuel workflow_dispatch requis');
+  assert.ok(releaseContent.includes('contents: write'), 'Permission contents: write requise pour publier la release');
+  assert.ok(releaseContent.includes('package-apk.py'), 'Appel au packager APK requis');
+  assert.ok(releaseContent.includes('package-linux.sh'), 'Appel au packager Linux requis');
+  assert.ok(releaseContent.includes('sha256sum -c'), 'Vérification intégrité SHA-256 requise');
+  assert.ok(releaseContent.includes('gh release create'), 'Publication gh release requise');
+});
+
+test('Android TV & HDMI-CEC: support matériel déclaré dans AndroidManifest.xml', () => {
+  const androidManifestPath = path.resolve(rootDir, 'android/app/src/main/AndroidManifest.xml');
+  const content = fs.readFileSync(androidManifestPath, 'utf-8');
+
+  assert.ok(content.includes('android.hardware.hdmi.cec'), 'Fonctionnalité android.hardware.hdmi.cec requise');
+  assert.ok(content.includes('android.intent.action.MEDIA_BUTTON'), 'Filtre d\'intention MEDIA_BUTTON requis');
+});
+
+
