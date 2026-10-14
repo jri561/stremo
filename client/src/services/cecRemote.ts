@@ -30,7 +30,9 @@ export type CecAction =
   | 'info'
   | 'subtitles'
   | 'audio_track'
-  | 'aspect_ratio';
+  | 'aspect_ratio'
+  | 'power_on'
+  | 'standby';
 
 export interface CecProfile {
   id: string;
@@ -122,12 +124,16 @@ const ACTION_LABELS: Record<CecAction, string> = {
   subtitles: 'Sous-titres',
   audio_track: 'Piste Audio',
   aspect_ratio: 'Format d\'image',
+  power_on: 'Allumage TV (Image View On 0x04)',
+  standby: 'Mise en veille TV (Standby 0x36)',
 };
 
 class CecRemoteManager {
   private activeProfileId: string = 'universal_cec';
   private isEnabled: boolean = true;
   private isOsdEnabled: boolean = true;
+  private isAutoPowerOn: boolean = true;
+  private isAutoStandby: boolean = true;
   private listeners: Set<(cmd: CecCommand) => void> = new Set();
   private lastCommand: CecCommand | null = null;
   private eventSource: EventSource | null = null;
@@ -147,10 +153,92 @@ class CecRemoteManager {
         if (storedOsd !== null) {
           this.isOsdEnabled = storedOsd === 'true';
         }
+        const storedPowerOn = localStorage.getItem('stremo_cec_auto_power_on');
+        if (storedPowerOn !== null) {
+          this.isAutoPowerOn = storedPowerOn === 'true';
+        }
+        const storedStandby = localStorage.getItem('stremo_cec_auto_standby');
+        if (storedStandby !== null) {
+          this.isAutoStandby = storedStandby === 'true';
+        }
       } catch {}
 
       this.initKeyboardListener();
       this.initSseListener();
+    }
+  }
+
+  public isAutoPowerOnEnabled(): boolean {
+    return this.isAutoPowerOn;
+  }
+
+  public setAutoPowerOnEnabled(enabled: boolean): void {
+    this.isAutoPowerOn = enabled;
+    try {
+      localStorage.setItem('stremo_cec_auto_power_on', String(enabled));
+    } catch {}
+  }
+
+  public isAutoStandbyEnabled(): boolean {
+    return this.isAutoStandby;
+  }
+
+  public setAutoStandbyEnabled(enabled: boolean): void {
+    this.isAutoStandby = enabled;
+    try {
+      localStorage.setItem('stremo_cec_auto_standby', String(enabled));
+    } catch {}
+  }
+
+  /**
+   * Allume la TV via HDMI-CEC (Image View On 0x04)
+   */
+  public async powerOnTv(): Promise<{ success: boolean; state: string }> {
+    try {
+      const res = await fetch('/api/hardware/cec/power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: 'on' }),
+      });
+      const data = await res.json();
+      this.dispatchCommand({
+        action: 'power_on',
+        label: ACTION_LABELS.power_on,
+        code: 0x04,
+        hexCode: '0x04',
+        source: 'simulated',
+        profileId: this.activeProfileId,
+        timestamp: Date.now(),
+      });
+      return data;
+    } catch {
+      return { success: false, state: 'error' };
+    }
+  }
+
+  /**
+   * Met la TV en veille via HDMI-CEC (Standby 0x36)
+   */
+  public async standbyTv(): Promise<{ success: boolean; state: string }> {
+    try {
+      const res = await fetch('/api/hardware/cec/power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: 'standby' }),
+      });
+      const data = await res.json();
+      this.dispatchCommand({
+        action: 'standby',
+        label: ACTION_LABELS.standby,
+        code: 0x36,
+        hexCode: '0x36',
+        source: 'simulated',
+        profileId: this.activeProfileId,
+        timestamp: Date.now(),
+      });
+      return data;
+    } catch {
+      return { success: false, state: 'error' };
     }
   }
 
@@ -280,6 +368,8 @@ class CecRemoteManager {
       action = 'audio_track';
     } else if (key === 'Info' || keyCode === 457 || keyCode === 165) {
       action = 'info';
+    } else if (key === 'Power' || key === 'PowerOff' || keyCode === 26 || keyCode === 409) {
+      action = 'standby';
     }
 
     if (!action) return null;

@@ -79,6 +79,29 @@ test('cecRemote: normalisation des touches Smart TV (Samsung, LG, Sony, Android 
   const infoCmd = cecRemote.mapKeyboardEvent(infoEvent);
   assert.ok(infoCmd);
   assert.equal(infoCmd.action, 'info');
+
+  // 5. Touche Power / Standby télécommande TV
+  const powerEvent = { key: 'Power', keyCode: 26 } as KeyboardEvent;
+  const powerCmd = cecRemote.mapKeyboardEvent(powerEvent);
+  assert.ok(powerCmd);
+  assert.equal(powerCmd.action, 'standby');
+});
+
+test('cecRemote: alimentation TV (Image View On 0x04 & Standby 0x36) et réglages auto', () => {
+  // Réglages par défaut
+  assert.equal(cecRemote.isAutoPowerOnEnabled(), true);
+  assert.equal(cecRemote.isAutoStandbyEnabled(), true);
+
+  // Modification des préférences
+  cecRemote.setAutoPowerOnEnabled(false);
+  assert.equal(cecRemote.isAutoPowerOnEnabled(), false);
+  cecRemote.setAutoPowerOnEnabled(true);
+  assert.equal(cecRemote.isAutoPowerOnEnabled(), true);
+
+  cecRemote.setAutoStandbyEnabled(false);
+  assert.equal(cecRemote.isAutoStandbyEnabled(), false);
+  cecRemote.setAutoStandbyEnabled(true);
+  assert.equal(cecRemote.isAutoStandbyEnabled(), true);
 });
 
 test('cecRemote: abonnement et diffusion des événements', () => {

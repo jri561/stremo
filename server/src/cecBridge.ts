@@ -90,7 +90,9 @@ export interface CecCommand {
     | 'info'
     | 'subtitles'
     | 'audio_track'
-    | 'aspect_ratio';
+    | 'aspect_ratio'
+    | 'power_on'
+    | 'standby';
   label: string;
   code?: number;
   hexCode?: string;
@@ -108,6 +110,7 @@ export const CEC_OPCODE_MAP: Record<number, { action: CecCommand['action']; labe
   0x04: { action: 'right', label: 'Droite' },
   0x09: { action: 'menu', label: 'Menu Principal' },
   0x0D: { action: 'back', label: 'Retour / Quitter' },
+  0x36: { action: 'standby', label: 'Mise en veille TV (Standby 0x36)' },
   0x41: { action: 'volume_up', label: 'Volume +' },
   0x42: { action: 'volume_down', label: 'Volume -' },
   0x43: { action: 'mute', label: 'Sourdine (Mute)' },
@@ -235,12 +238,112 @@ export class CecHardwareBridge {
     return command;
   }
 
+  /**
+   * Allume la télévision via HDMI-CEC (Opcode 0x04: Image View On)
+   */
+  public async powerOnTv(): Promise<{ success: boolean; state: 'on'; opcode: string; method: string }> {
+    let method = 'emulated';
+    try {
+      if (process.platform === 'linux') {
+        const { execSync } = await import('node:child_process');
+        if (this.hasCommand('cec-ctl')) {
+          execSync('cec-ctl -d /dev/cec0 --image-view-on', { stdio: 'ignore', timeout: 2000 });
+          method = 'cec-ctl';
+        } else if (this.hasCommand('cec-client')) {
+          execSync("echo 'on 0' | cec-client -s -d 1", { stdio: 'ignore', timeout: 2000 });
+          method = 'cec-client';
+        }
+      }
+    } catch {
+      // Ignoré en cas d'absence de binaire ou d'erreur système
+    }
+
+    const command: CecCommand = {
+      action: 'power_on',
+      label: 'Allumage TV (Image View On 0x04)',
+      code: 0x04,
+      hexCode: '0x04',
+      source: method === 'emulated' ? 'simulated' : 'hardware',
+      profileId: this.activeProfileId,
+      timestamp: Date.now(),
+    };
+
+    this.eventEmitter.emit('cec_command', command);
+    this.eventEmitter.emit('cec_power', { state: 'on', opcode: '0x04', method, timestamp: Date.now() });
+
+    return {
+      success: true,
+      state: 'on',
+      opcode: '0x04',
+      method,
+    };
+  }
+
+  /**
+   * Met la télévision en veille via HDMI-CEC (Opcode 0x36: Standby)
+   */
+  public async standbyTv(): Promise<{ success: boolean; state: 'standby'; opcode: string; method: string }> {
+    let method = 'emulated';
+    try {
+      if (process.platform === 'linux') {
+        const { execSync } = await import('node:child_process');
+        if (this.hasCommand('cec-ctl')) {
+          execSync('cec-ctl -d /dev/cec0 --standby', { stdio: 'ignore', timeout: 2000 });
+          method = 'cec-ctl';
+        } else if (this.hasCommand('cec-client')) {
+          execSync("echo 'standby 0' | cec-client -s -d 1", { stdio: 'ignore', timeout: 2000 });
+          method = 'cec-client';
+        }
+      }
+    } catch {
+      // Ignoré en cas d'absence de binaire ou d'erreur système
+    }
+
+    const command: CecCommand = {
+      action: 'standby',
+      label: 'Mise en veille TV (Standby 0x36)',
+      code: 0x36,
+      hexCode: '0x36',
+      source: method === 'emulated' ? 'simulated' : 'hardware',
+      profileId: this.activeProfileId,
+      timestamp: Date.now(),
+    };
+
+    this.eventEmitter.emit('cec_command', command);
+    this.eventEmitter.emit('cec_power', { state: 'standby', opcode: '0x36', method, timestamp: Date.now() });
+
+    return {
+      success: true,
+      state: 'standby',
+      opcode: '0x36',
+      method,
+    };
+  }
+
+  private hasCommand(cmd: string): boolean {
+    try {
+      const { execSync } = require('node:child_process');
+      execSync(`which ${cmd}`, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public onCommand(listener: (cmd: CecCommand) => void) {
     this.eventEmitter.on('cec_command', listener);
   }
 
   public offCommand(listener: (cmd: CecCommand) => void) {
     this.eventEmitter.off('cec_command', listener);
+  }
+
+  public onPower(listener: (power: { state: string; opcode: string; method: string }) => void) {
+    this.eventEmitter.on('cec_power', listener);
+  }
+
+  public offPower(listener: (power: { state: string; opcode: string; method: string }) => void) {
+    this.eventEmitter.off('cec_power', listener);
   }
 }
 
@@ -292,6 +395,23 @@ export function handleSimulateCecCommand(req: Request, res: Response): void {
 }
 
 /**
+ * Route POST /api/hardware/cec/power
+ * Allume la TV (0x04 Image View On) ou la met en veille (0x36 Standby)
+ */
+export async function handleCecPowerControl(req: Request, res: Response): Promise<void> {
+  const { state } = req.body || {};
+  if (state === 'on') {
+    const result = await cecBridge.powerOnTv();
+    res.json(result);
+  } else if (state === 'standby' || state === 'off') {
+    const result = await cecBridge.standbyTv();
+    res.json(result);
+  } else {
+    res.status(400).json({ success: false, error: "Paramètre state 'on' ou 'standby' requis" });
+  }
+}
+
+/**
  * Route GET /api/hardware/cec/events (Server-Sent Events)
  * Permet aux applications frontend de recevoir les touches télécommande HDMI en continu.
  */
@@ -314,10 +434,16 @@ export function handleCecEventsSse(_req: Request, res: Response): void {
     res.write(`data: ${JSON.stringify({ type: 'cec_key', command: cmd })}\n\n`);
   };
 
+  const powerListener = (p: any) => {
+    res.write(`data: ${JSON.stringify({ type: 'cec_power', power: p })}\n\n`);
+  };
+
   cecBridge.onCommand(commandListener);
+  cecBridge.onPower(powerListener);
 
   _req.on('close', () => {
     clearInterval(keepAlive);
     cecBridge.offCommand(commandListener);
+    cecBridge.offPower(powerListener);
   });
 }

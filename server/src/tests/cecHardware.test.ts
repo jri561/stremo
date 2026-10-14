@@ -47,6 +47,13 @@ test('CecHardwareBridge: décodage des opcodes HDMI-CEC standard et touches coul
   assert.ok(pauseCmd);
   assert.equal(pauseCmd.action, 'pause');
 
+  // Test 0x36 (Standby)
+  const standbyCmd = cecBridge.decodeCecOpcode(0x36);
+  assert.ok(standbyCmd);
+  assert.equal(standbyCmd.action, 'standby');
+  assert.equal(standbyCmd.code, 0x36);
+  assert.equal(standbyCmd.hexCode, '0x36');
+
   // Test 0x71 (Red / Sous-titres)
   const redCmd = cecBridge.decodeCecOpcode(0x71);
   assert.ok(redCmd);
@@ -70,6 +77,34 @@ test('CecHardwareBridge: décodage des opcodes HDMI-CEC standard et touches coul
   // Opcode non mappé
   const unknownCmd = cecBridge.decodeCecOpcode(0xfe);
   assert.equal(unknownCmd, null);
+});
+
+test('CecHardwareBridge: allumage TV (Image View On 0x04) et mise en veille (Standby 0x36)', async () => {
+  let lastPowerEvent: any = null;
+  const powerListener = (data: any) => {
+    lastPowerEvent = data;
+  };
+
+  cecBridge.onPower(powerListener);
+
+  // 1. Allumage TV (0x04)
+  const onResult = await cecBridge.powerOnTv();
+  assert.equal(onResult.success, true);
+  assert.equal(onResult.state, 'on');
+  assert.equal(onResult.opcode, '0x04');
+  assert.ok(lastPowerEvent);
+  assert.equal(lastPowerEvent.state, 'on');
+  assert.equal(lastPowerEvent.opcode, '0x04');
+
+  // 2. Mise en veille TV (0x36)
+  const standbyResult = await cecBridge.standbyTv();
+  assert.equal(standbyResult.success, true);
+  assert.equal(standbyResult.state, 'standby');
+  assert.equal(standbyResult.opcode, '0x36');
+  assert.equal(lastPowerEvent.state, 'standby');
+  assert.equal(lastPowerEvent.opcode, '0x36');
+
+  cecBridge.offPower(powerListener);
 });
 
 test('CecHardwareBridge: simulation et émission d\'événements', (t, done) => {

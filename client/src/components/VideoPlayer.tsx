@@ -348,7 +348,13 @@ export const VideoPlayer: React.FC<Props> = ({
       videoRef.current.volume = originalVolumeRef.current;
       setIsPlaying(false);
     }
-    triggerOSD('Mise en veille effectuée 🌙', '⏱️');
+    // Mise en veille automatique de la TV via HDMI-CEC (Standby 0x36)
+    if (cecRemote.isAutoStandbyEnabled()) {
+      cecRemote.standbyTv();
+      triggerOSD('Mise en veille TV (HDMI-CEC Standby 0x36) 🌙', '📺');
+    } else {
+      triggerOSD('Mise en veille effectuée 🌙', '⏱️');
+    }
     setSleepTimerMinutes(null);
     setSleepRemainingSec(null);
   };
@@ -1542,6 +1548,16 @@ export const VideoPlayer: React.FC<Props> = ({
         case 'info':
           triggerOSD(title ? `${title}` : 'Stremo Player', 'ℹ️');
           break;
+        case 'power_on':
+          triggerOSD('Allumage TV (HDMI-CEC 0x04) 📺', '⚡');
+          break;
+        case 'standby':
+          if (videoRef.current) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+          }
+          triggerOSD('Mise en veille TV (HDMI-CEC Standby 0x36) 🌙', '💤');
+          break;
         case 'back':
           if (document.fullscreenElement) {
             document.exitFullscreen().catch(() => {});
@@ -1554,6 +1570,13 @@ export const VideoPlayer: React.FC<Props> = ({
 
     return () => unsubscribe();
   }, [isPlaying, nextEpisode, onPlayNextEpisode, title]);
+
+  // Allumage automatique de la télévision via HDMI-CEC (Image View On 0x04) au démarrage
+  useEffect(() => {
+    if (cecRemote.isAutoPowerOnEnabled()) {
+      cecRemote.powerOnTv();
+    }
+  }, []);
 
   return (
     <div
